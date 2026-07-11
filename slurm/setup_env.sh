@@ -24,9 +24,18 @@ export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${PROJECT_ROOT}/.torch_ext}
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.0;8.6;9.0;10.0}"
 mkdir -p "${HF_HOME}" "${TORCH_EXTENSIONS_DIR}"
 
-if [ -z "${HF_TOKEN:-}" ] && [ ! -f "${HF_HOME}/token" ]; then
-    echo "[setup] WARNING: HF_TOKEN not set and no cached token — gated NX-AI/TiRex-2 weights will fail."
-    echo "        export HF_TOKEN=hf_xxx in your shell (or ~/.bashrc) before submitting."
+# Gated NX-AI/TiRex-2 weights: build_container.sh pre-downloads them into HF_HOME.
+# If they're already cached, force offline mode — otherwise huggingface_hub makes a
+# network call to REVALIDATE the cached files, which 401s for a gated repo unless a
+# token is present. Offline mode uses the cache directly (no network, no token needed).
+if compgen -G "${HF_HOME}/hub/models--NX-AI--TiRex-2/snapshots/*/model-config.yaml" >/dev/null 2>&1; then
+    export HF_HUB_OFFLINE=1
+    echo "[setup] Cached TiRex-2 weights found -> HF_HUB_OFFLINE=1 (no network/token needed)."
+elif [ -n "${HF_TOKEN:-}" ]; then
+    echo "[setup] TiRex-2 weights not cached; will download once with HF_TOKEN into ${HF_HOME}."
+else
+    echo "[setup] WARNING: TiRex-2 weights not cached and HF_TOKEN not set — gated download will 401."
+    echo "        export HF_TOKEN=hf_xxx before submitting, or run slurm/build_container.sh first."
 fi
 
 # ── skip pip if the container already has our deps ────────────────────────────
