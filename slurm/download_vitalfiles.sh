@@ -12,6 +12,7 @@
 # NOTE: verify the VitalDB endpoint below once (open-dataset raw vitals). If it changed, adjust URL.
 set -euo pipefail
 
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "cannot cd to repo root" >&2; exit 1; }
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 DEST="${PROJECT_ROOT}/vital_files"
 URL_BASE="${URL_BASE:-https://api.vitaldb.net}"

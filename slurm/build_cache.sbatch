@@ -20,6 +20,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="${PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
+# tolerate submission from slurm/ (repo root is its parent)
+[ -f "${PROJECT_ROOT}/requirements_gpu.txt" ] || [ ! -f "${PROJECT_ROOT}/../requirements_gpu.txt" ] || PROJECT_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
 DEFAULT_SQSH="${HOME}/containers/tirex2.sqsh"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-$( [ -f "$DEFAULT_SQSH" ] && echo "$DEFAULT_SQSH" || echo "nvcr.io#nvidia/pytorch:25.09-py3" )}"
 mkdir -p "${PROJECT_ROOT}/logs" "${PROJECT_ROOT}/outputs"

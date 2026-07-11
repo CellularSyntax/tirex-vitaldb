@@ -19,6 +19,9 @@
 # Overrides: BASE_IMAGE, OUT, PARTITION/QOS/GRES, PROJECT_ROOT, TIME_LIMIT.
 set -euo pipefail
 
+# Resolve repo root from this script's location (slurm/ lives in the repo root), so it works
+# regardless of the invoking directory.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "cannot cd to repo root" >&2; exit 1; }
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 OUT="${OUT:-${HOME}/containers/tirex2.sqsh}"
 BASE_IMAGE="${BASE_IMAGE:-nvcr.io#nvidia/pytorch:25.09-py3}"

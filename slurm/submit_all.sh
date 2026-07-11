@@ -8,6 +8,7 @@
 # Job graph:  build_cache (CPU) --afterok--> { ce, rate, pressor } GPU jobs (run in parallel).
 # GPU work is light (zero-shot inference); one A100 per covariate is plenty — 3 of your 6 GPU slots.
 set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "cannot cd to repo root" >&2; exit 1; }  # sbatch paths are relative to here
 mkdir -p logs
 : "${HF_TOKEN:?export HF_TOKEN=hf_xxx first (gated NX-AI/TiRex-2 weights)}"
 
