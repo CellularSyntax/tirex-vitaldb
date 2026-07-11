@@ -24,6 +24,9 @@
 set -euo pipefail
 
 COV="${COV:-ce}"
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo "ERROR: submit this with 'sbatch slurm/run_ablation.sbatch' (not 'bash')." >&2; exit 1
+fi
 PROJECT_ROOT="${PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
 # tolerate submission from slurm/ (repo root is its parent)
 [ -f "${PROJECT_ROOT}/requirements_gpu.txt" ] || [ ! -f "${PROJECT_ROOT}/../requirements_gpu.txt" ] || PROJECT_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
