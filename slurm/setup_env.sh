@@ -22,6 +22,11 @@ export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${PROJECT_ROOT}/.torch_ext}
 # Compile the sLSTM kernels for every GPU arch we might land on (a100=8.0, h100=9.0,
 # b200=10.0, a30=8.0, a16=8.6). nvcc cross-compiles regardless of the build GPU.
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.0;8.6;9.0;10.0}"
+# The NGC 25.09 image pairs torch 2.9 Inductor with a Triton whose KernelMetadata lacks
+# 'cluster_dims', so any torch.compile-generated kernel crashes. TiRex-2 wraps part of its
+# forward in torch.compile for speed but runs fine in eager; disable Dynamo/Inductor so it
+# falls back to eager. TiRex's hand-written Triton sLSTM kernels are a separate path, unaffected.
+export TORCHDYNAMO_DISABLE="${TORCHDYNAMO_DISABLE:-1}"
 mkdir -p "${HF_HOME}" "${TORCH_EXTENSIONS_DIR}"
 
 # Gated NX-AI/TiRex-2 weights: build_container.sh pre-downloads them into HF_HOME.
