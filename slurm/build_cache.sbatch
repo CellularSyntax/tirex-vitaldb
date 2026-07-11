@@ -29,6 +29,11 @@ DEFAULT_SQSH="${HOME}/containers/tirex2.sqsh"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-$( [ -f "$DEFAULT_SQSH" ] && echo "$DEFAULT_SQSH" || echo "nvcr.io#nvidia/pytorch:25.09-py3" )}"
 mkdir -p "${PROJECT_ROOT}/logs" "${PROJECT_ROOT}/outputs"
 export SLURM_STEP_LAUNCH_TIMEOUT=600
+# CPU-partition nodes lack nvidia-container-cli, so enroot's NVIDIA hook (98-nvidia.sh)
+# would fail on the image's baked NVIDIA_VISIBLE_DEVICES=all. This is a CPU-only job
+# (reads .vital, no model), so tell enroot to skip GPU setup entirely.
+export NVIDIA_VISIBLE_DEVICES=void
+export NVIDIA_DRIVER_CAPABILITIES=void
 echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"
 
 srun \
