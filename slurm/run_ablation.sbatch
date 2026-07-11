@@ -43,10 +43,10 @@ fi
 
 # Covariate -> phase3 arguments.
 case "${COV}" in
-  ce)      RUN_ARGS="--config configs/data.yaml --cov ce --all" ;;
-  rate)    RUN_ARGS="--config configs/data.yaml --cov rate --all" ;;
-  ce_remi) RUN_ARGS="--config configs/data.yaml --cov ce_remi --all" ;;
-  pressor) RUN_ARGS="--config configs/data_pressor.yaml --cov pressor --cases-file results/pressor_cases_phen.txt" ;;
+  ce)      RUN_ARGS="--config datasets/vitaldb/configs/data.yaml --cov ce --all" ;;
+  rate)    RUN_ARGS="--config datasets/vitaldb/configs/data.yaml --cov rate --all" ;;
+  ce_remi) RUN_ARGS="--config datasets/vitaldb/configs/data.yaml --cov ce_remi --all" ;;
+  pressor) RUN_ARGS="--config datasets/vitaldb/configs/data_pressor.yaml --cov pressor --cases-file datasets/vitaldb/pressor_cases_phen.txt" ;;
   *) echo "unknown COV=${COV}" >&2; exit 1 ;;
 esac
 
@@ -63,6 +63,6 @@ export PROJECT_ROOT='${PROJECT_ROOT}'
 bash '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
 echo '[job] phase3_ablation.py ${RUN_ARGS} ${SHARD_ARGS} --device cuda --batch-size 512'
-PYTHONPATH=scripts python scripts/phase3_ablation.py ${RUN_ARGS} ${SHARD_ARGS} --device cuda --batch-size 512
+PYTHONPATH=scripts:datasets/vitaldb python scripts/phase3_ablation.py ${RUN_ARGS} ${SHARD_ARGS} --device cuda --batch-size 512
 echo '[job] Done.'
 "

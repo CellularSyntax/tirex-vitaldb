@@ -17,7 +17,7 @@ job + 3 GPU jobs, not the full 4×a100+2×h100 allowance. See `notes/HPC_PORTING
 
 ## One-time setup
 ```bash
-cd <project on cluster>            # copy the repo over; keep results/cohort_manifest.csv + results/pressor_cases_phen.txt
+cd <project on cluster>            # copy the repo over; keep datasets/vitaldb/cohort_manifest.csv + datasets/vitaldb/pressor_cases_phen.txt
 export HF_TOKEN=hf_xxxxx           # gated NX-AI/TiRex-2 weights (put in ~/.bashrc)
 
 bash slurm/download_vitalfiles.sh  # ~5.4k .vital -> vital_files/ (login or `storage` partition). VERIFY the

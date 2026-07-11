@@ -155,7 +155,7 @@ def load_rows(tag):
 
 def caseid_to_subject():
     m = {}
-    for r in csv.DictReader(open("clinical_data.csv", encoding="utf-8-sig")):
+    for r in csv.DictReader(open("datasets/vitaldb/data/clinical_data.csv", encoding="utf-8-sig")):
         m[str(int(r["caseid"]))] = str(r["subjectid"])
     return m
 

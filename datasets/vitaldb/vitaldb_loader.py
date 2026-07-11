@@ -21,7 +21,7 @@ import numpy as np
 import yaml
 
 
-def load_config(path: str = "configs/data.yaml") -> dict:
+def load_config(path: str = "datasets/vitaldb/configs/data.yaml") -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
 
@@ -213,7 +213,7 @@ def _from_npz(path: str) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("caseid")
-    ap.add_argument("--config", default="configs/data.yaml")
+    ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--plot", action="store_true")
     args = ap.parse_args()

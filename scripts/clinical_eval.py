@@ -223,7 +223,7 @@ def main():
     rows, files = load_rows(tag)
     import yaml
     ev = yaml.safe_load(open("configs/eval.yaml"))
-    cfg = L.load_config("configs/data.yaml"); clin = L._clinical_index(cfg["clinical_csv"])
+    cfg = L.load_config("datasets/vitaldb/configs/data.yaml"); clin = L._clinical_index(cfg["clinical_csv"])
     probe = next((L.load_case(str(r["caseid"]), cfg, clin) for r in rows), None)
     DT = probe["interval_s"]
     hsteps = [int(m * 60 / DT) for m in HMIN]

@@ -3,7 +3,7 @@
 Parallel scan over LOCAL .vital files (iCloud-evicted skipped). For each file: header-check required
 tracks; if present, load (5 s grid, masked) and compute target/covariate coverage, duration, and
 infusion activity. Applies inclusion criteria and writes:
-  - results/cohort_manifest.csv   (one row per scanned candidate + include flag + exclude reason)
+  - datasets/vitaldb/cohort_manifest.csv   (one row per scanned candidate + include flag + exclude reason)
   - results/cohort_flow.json      (case-flow counts at each exclusion step -> [N])
   - results/infusion_fidelity.json (the §3.1 gate summary)
 
@@ -98,7 +98,7 @@ COLUMNS = ["caseid", "include", "exclude_reason", "has_ART_MBP", "has_RFTN_CE", 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/data.yaml")
+    ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--workers", type=int, default=8)
     args = ap.parse_args()
@@ -112,7 +112,7 @@ def main():
     print(f"{len(files)} files, {len(local)} local, scanning with {args.workers} workers", flush=True)
 
     os.makedirs("results", exist_ok=True)
-    out_csv = "results/cohort_manifest.csv"
+    out_csv = "datasets/vitaldb/cohort_manifest.csv"
     rows = []
     with open(out_csv, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNS, extrasaction="ignore")

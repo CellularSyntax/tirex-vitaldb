@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--resample-to-s", type=float, default=None, help="downsample grid (e.g. 15)")
     args = ap.parse_args()
 
-    cfg = L.load_config("configs/data.yaml")
+    cfg = L.load_config("datasets/vitaldb/configs/data.yaml")
     if args.resample_to_s:
         cfg["resample_to_s"] = args.resample_to_s
     clin = L._clinical_index(cfg["clinical_csv"])

@@ -39,13 +39,13 @@ bash '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
 
 echo '[cache] Building anesthetic cohort cache + manifest (build_cohort.py) ...'
-PYTHONPATH=scripts python scripts/build_cohort.py --workers ${SLURM_CPUS_PER_TASK}
+PYTHONPATH=scripts:datasets/vitaldb python datasets/vitaldb/build_cohort.py --workers ${SLURM_CPUS_PER_TASK}
 
 echo '[cache] Building phenylephrine (pressor) cache from data_pressor.yaml ...'
-PYTHONPATH=scripts python -c \"
+PYTHONPATH=scripts:datasets/vitaldb python -c \"
 import vitaldb_loader as L
-cfg=L.load_config('configs/data_pressor.yaml'); clin=L._clinical_index(cfg['clinical_csv'])
-ids=[l.strip() for l in open('results/pressor_cases_phen.txt') if l.strip()]
+cfg=L.load_config('datasets/vitaldb/configs/data_pressor.yaml'); clin=L._clinical_index(cfg['clinical_csv'])
+ids=[l.strip() for l in open('datasets/vitaldb/pressor_cases_phen.txt') if l.strip()]
 ok=sum(L.load_case(c,cfg,clin) is not None for c in ids)
 print(f'[cache] pressor cache: {ok}/{len(ids)} cases built')
 \"

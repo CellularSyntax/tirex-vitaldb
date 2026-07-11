@@ -26,7 +26,7 @@ def main():
                 else:
                     r[k] = float(r[k]) if r[k] not in ("", "nan") else float("nan")
             rows.append(r); cases.add(r["caseid"])
-    dt = float(yaml.safe_load(open("configs/data.yaml")).get("resample_to_s", 5.0))
+    dt = float(yaml.safe_load(open("datasets/vitaldb/configs/data.yaml")).get("resample_to_s", 5.0))
     hsteps = [int(m * 60 / dt) for m in HORIZON_STEPS_MIN]
     n_boot = yaml.safe_load(open("configs/eval.yaml")).get("n_boot", 2000)
     rng = np.random.default_rng(0)

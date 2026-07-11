@@ -22,7 +22,7 @@ ART = "Solar8000/ART_MBP"
 def main():
     # our study cohort (included cases) + full "usable target" set from the manifest
     included = set()
-    with open("results/cohort_manifest.csv") as fh:
+    with open("datasets/vitaldb/cohort_manifest.csv") as fh:
         for r in csv.DictReader(fh):
             if r.get("include") == "1":
                 included.add(str(int(r["caseid"])))
@@ -46,10 +46,10 @@ def main():
         print(f"{drug:15s} {trk:22s}  dataset={len(cases):5d}  +art={len(with_art):5d}  "
               f"in_cohort={len(in_cohort):5d}", flush=True)
 
-    with open("results/vaso_prevalence.json", "w") as fh:
+    with open("datasets/vitaldb/vaso_prevalence.json", "w") as fh:
         json.dump({"cohort_n": len(included), "art_dataset_n": len(art_cases), "pressors": rows},
                   fh, indent=1)
-    print("\nwrote results/vaso_prevalence.json\nDONE", flush=True)
+    print("\nwrote datasets/vitaldb/vaso_prevalence.json\nDONE", flush=True)
 
 
 if __name__ == "__main__":

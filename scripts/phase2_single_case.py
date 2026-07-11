@@ -44,7 +44,7 @@ def coverage(y, q_pred, lo=0, hi=8):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("caseid")
-    ap.add_argument("--config", default="configs/data.yaml")
+    ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
     ap.add_argument("--context-min", type=float, default=30.0)
     ap.add_argument("--horizon-min", type=float, default=10.0)
     ap.add_argument("--origin-min", type=float, default=None)

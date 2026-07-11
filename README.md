@@ -10,27 +10,32 @@ See `notes/` for the full plan (`PROJECT_PLAN.md`), paper framing (`PAPER_TARGET
 and the cluster runbook (`CLUSTER.md`).
 
 ## Layout
+Dataset-specific code/data live under `datasets/<name>/`; the forecasting + analysis pipeline is shared,
+so a second dataset (e.g. MOVER) drops in as `datasets/mover/` reusing `scripts/`.
 ```
-scripts/     loader, cohort builder, phase3 ablation (the flagship), and post-hoc analyses
-             (hypo_eval, clinical_eval, subgroup_forest, plot_kapral_mae, merge_dashboard)
-configs/     data.yaml (anesthetic covariate), data_pressor.yaml (phenylephrine), eval.yaml
-slurm/       cluster deployment (Pyxis container build, cache build, GPU ablation, submit_all)
-notes/       plan, data/API notes, related work, HPC porting, resume/handoff
-results/     cohort manifest, curated inputs (kapral digitized curves, pressor case list, foil tables)
+datasets/vitaldb/   loader, cohort builder, scan tools; configs/ (data.yaml, data_pressor.yaml);
+                    cohort_manifest.csv + pressor_cases_phen.txt; data/ (raw, gitignored) + cache/
+scripts/            shared pipeline: phase3 ablation (flagship) + post-hoc analyses
+                    (hypo_eval, clinical_eval, subgroup_forest, plot_kapral_mae, merge_dashboard)
+configs/eval.yaml   shared evaluation protocol
+slurm/              cluster deployment (Pyxis container build, cache build, GPU ablation, submit_all)
+notes/              plan, related work, HPC porting, cluster runbook, resume/handoff
+results/            run outputs + curated (kapral digitized curves, foil comparison tables)
 ```
+Run scripts with `PYTHONPATH=scripts:datasets/vitaldb` so the shared pipeline finds the dataset loader.
 
 ## Data (not included — fetch it)
-The **VitalDB raw `.vital` files, `lab_data.csv`, and the papers are not committed** (see `.gitignore`).
-`clinical_data.csv` + the case manifest are included so the pipeline runs out of the box. VitalDB is an
-open dataset (https://vitaldb.net); please cite it and follow its terms. On a cluster, re-fetch the
-`.vital` files with `slurm/download_vitalfiles.sh`.
+The **VitalDB raw `.vital` files, `clinical_data.csv`, `lab_data.csv`, and the papers are not committed**
+(see `.gitignore`). Only the small case manifest + pressor case list are included. VitalDB is an open
+dataset (https://vitaldb.net); please cite it and follow its terms. On a cluster, re-fetch the raw data
+(`.vital` + `clinical_data.csv`) with `slurm/download_vitalfiles.sh` into `datasets/vitaldb/data/`.
 
 ## Run locally (macOS, CPU)
 ```bash
 PY=/path/to/venv/bin/python
-PYTHONPATH=scripts $PY scripts/phase3_ablation.py --n-cases 300 --seed 1     # anesthetic (remi+propofol CE)
-PYTHONPATH=scripts $PY scripts/hypo_eval.py n300_s1                          # hypotension ROC/PR/calibration
-PYTHONPATH=scripts $PY scripts/clinical_eval.py n300_s1                      # lead time / severity / decision curve
+PYTHONPATH=scripts:datasets/vitaldb $PY scripts/phase3_ablation.py --n-cases 300 --seed 1     # anesthetic (remi+propofol CE)
+PYTHONPATH=scripts:datasets/vitaldb $PY scripts/hypo_eval.py n300_s1                          # hypotension ROC/PR/calibration
+PYTHONPATH=scripts:datasets/vitaldb $PY scripts/clinical_eval.py n300_s1                      # lead time / severity / decision curve
 ```
 
 ## Run the full cohort on the cluster (SLURM + GPU)

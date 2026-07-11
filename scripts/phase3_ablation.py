@@ -229,7 +229,7 @@ def aggregate(rows, hsteps, dt, n_boot, rng, meta):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/data.yaml")
+    ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
     ap.add_argument("--eval-config", default="configs/eval.yaml")
     ap.add_argument("--n-cases", type=int, default=300)
     ap.add_argument("--all", action="store_true")
@@ -258,7 +258,7 @@ def main():
     if args.cases_file:
         cases = [ln.strip() for ln in open(args.cases_file) if ln.strip()]
     else:
-        included = [r["caseid"] for r in csv.DictReader(open("results/cohort_manifest.csv")) if r["include"] == "1"]
+        included = [r["caseid"] for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv")) if r["include"] == "1"]
         cases = included if args.all else list(rng.choice(included, min(args.n_cases, len(included)), replace=False))
     global FUTURE_COV, PRIMARY_COV, TRANSITION_THR
     preset = COV_PRESETS[args.cov]

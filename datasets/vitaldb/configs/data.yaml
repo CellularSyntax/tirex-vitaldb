@@ -1,9 +1,8 @@
 # VitalDB data / loader configuration (Phase 1). Verified facts in notes/DATA_NOTES.md.
 
-vital_dir: vital_files
-clinical_csv: clinical_data.csv
-cache_dir: outputs/cache   # LOCAL, in-project (iCloud sync disabled for Desktop). Portable: travels
-                           # with the project. Was /Users/admin/DATA/tirex2/cache pre-2026-07-11. See API_NOTES.
+vital_dir: datasets/vitaldb/data/vital_files
+clinical_csv: datasets/vitaldb/data/clinical_data.csv
+cache_dir: datasets/vitaldb/cache   # per-dataset cache. Paths are relative to the repo root (run from there).
 
 # Resampling grid. 5 s keeps horizons within model.future_len=320 steps
 # (10 min = 120 steps) and matches slow MAP dynamics; numerics are ~0.5 Hz native.

@@ -1,6 +1,6 @@
 """Subgroup / generalizability forest plot for the TiRex-2 hypotension task (§3.9 TRIPOD-AI).
 Standalone, post-hoc: joins the per-window rows (phase3_ablation.py output) to clinical/demographic
-variables in results/cohort_manifest.csv and plots per-subgroup hypotension AUROC (M1) at a chosen
+variables in datasets/vitaldb/cohort_manifest.csv and plots per-subgroup hypotension AUROC (M1) at a chosen
 horizon, each with a case-clustered bootstrap CI, against the overall estimate. Descriptive
 heterogeneity analysis over the whole cohort (not the dev/test split used for thresholding).
 
@@ -24,7 +24,7 @@ def parse_age(a):
 def manifest_meta():
     """caseid -> dict of subgroup fields."""
     m = {}
-    for r in csv.DictReader(open("results/cohort_manifest.csv")):
+    for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv")):
         if r.get("include") != "1":
             continue
         m[str(int(r["caseid"]))] = r

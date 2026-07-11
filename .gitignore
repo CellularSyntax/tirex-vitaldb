@@ -1,9 +1,11 @@
 # VitalDB raw dataset — NOT redistributed here.
 # Re-fetch on the cluster with slurm/download_vitalfiles.sh (see notes/CLUSTER.md).
-vital_files/
+# raw dataset + caches live under datasets/<name>/ (fetched/rebuilt, never committed)
+datasets/*/data/vital_files/
 *.vital
-# clinical_data.csv + lab_data.csv come with the VitalDB pull (download_vitalfiles.sh)
-clinical_data.csv
+datasets/*/data/clinical_data.csv
+datasets/*/cache/
+datasets/*/cache_pressor/
 lab_data.csv
 SHA256SUMS.txt
 
