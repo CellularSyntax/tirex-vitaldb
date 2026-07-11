@@ -14,7 +14,7 @@ Case-clustered bootstrap CIs. ZERO-SHOT. Chunked -> figures/results refresh as i
   python scripts/phase3_ablation.py --n-cases 300 --seed 1
 """
 from __future__ import annotations
-import argparse, csv, json, os
+import argparse, csv, json, os, time
 import numpy as np
 import torch
 
@@ -246,6 +246,7 @@ def main():
                     help="covariate preset (future channel + stratification anchor).")
     ap.add_argument("--cases-file", default=None,
                     help="file with one caseid per line -> use these instead of the random cohort sample.")
+    ap.add_argument("--quiet", action="store_true", help="suppress per-case / per-chunk progress lines.")
     args = ap.parse_args()
 
     import yaml
@@ -291,28 +292,45 @@ def main():
     os.makedirs("results", exist_ok=True); os.makedirs("outputs/figs", exist_ok=True)
 
     from tirex2 import load_model
+    print(f"[load] loading TiRex-2 on {args.device} (custom kernels compile on first call) ...", flush=True)
     model = load_model("NX-AI/TiRex-2", device=args.device)
+    print(f"[load] model ready. cov={args.cov} future_cov={FUTURE_COV}", flush=True)
 
+    t_start = time.time(); n_skip = 0
+    n_chunks = (len(cases) + args.chunk - 1) // args.chunk
     all_rows = []; ex = None
     for start in range(0, len(cases), args.chunk):
-        chunk = cases[start:start + args.chunk]
+        chunk = cases[start:start + args.chunk]; ci = start // args.chunk + 1
         keys, persist, trans, recs = [], [], [], {}
         items = {c: [] for c in COND_SPEC}
         for caseid in chunk:
             rec = L.load_case(caseid, cfg, clin)
             if rec is None:
+                n_skip += 1
+                if not args.quiet:
+                    print(f"  [case {caseid}] skip — no data / covariate missing", flush=True)
                 continue
             truth = rec["target"]; cov = rec["future_cov"][PRIMARY_COV]
+            nt = ns = 0
             for t0 in make_windows(rec, Lc, H, stride, warmup, args.max_origins):
                 keys.append((caseid, t0)); recs[(caseid, t0)] = rec
                 persist.append((truth[t0 - Lc:t0], truth[t0:t0 + H]))
                 seg = cov[t0:t0 + H]
-                trans.append("transition" if (np.nanmax(seg) - np.nanmin(seg)) > TRANSITION_THR else "steady")
+                st = "transition" if (np.nanmax(seg) - np.nanmin(seg)) > TRANSITION_THR else "steady"
+                trans.append(st); nt += st == "transition"; ns += st == "steady"
                 for c, (up, uf) in COND_SPEC.items():
                     items[c].append(build_ts(rec, t0, Lc, H, up, uf))
+            if not args.quiet:
+                print(f"  [case {caseid}] {nt + ns} windows ({nt} transition, {ns} steady)", flush=True)
         if not keys:
             continue
+        if not args.quiet:
+            print(f"[chunk {ci}/{n_chunks}] forecasting {len(keys)} windows x{len(COND_SPEC)} conditions "
+                  f"on {args.device} ...", flush=True)
+        tf = time.time()
         fc = {c: batched_forecast(model, items[c], H, args.batch_size) for c in COND_SPEC}
+        if not args.quiet:
+            print(f"[chunk {ci}/{n_chunks}] forecast done in {time.time() - tf:.1f}s", flush=True)
 
         for wi, ((caseid, t0), (ctx, truth), st) in enumerate(zip(keys, persist, trans)):
             q = {c: np.asarray(fc[c][wi])[0] for c in COND_SPEC}
@@ -361,11 +379,20 @@ def main():
             plot_dashboard(summary, f"outputs/figs/dashboard_{tag}.png")
             from plot_results import plot_hypotension
             plot_hypotension(summary, f"outputs/figs/hypotension_{tag}.png")
-        a15 = summary["per_horizon"].get("15min", {}).get("all", {})
-        print(f"[{done}/{len(cases)} | {summary['n_windows']}win] 15min X%withpast={a15.get('X_pct_withpast')} "
-              f"CI{a15.get('X_pct_withpast_CI95')}  targetonly={a15.get('X_pct_targetonly')}", flush=True)
+        ph = summary["per_horizon"]
+        a15 = ph.get("15min", {}).get("all", {}); a7 = ph.get("7min", {}).get("all", {})
+        t15 = ph.get("15min", {}).get("transition", {})
+        elapsed = time.time() - t_start; eta = elapsed / max(done, 1) * (len(cases) - done)
+        print(f"[{done}/{len(cases)} cases | {summary['n_windows']} win | {n_skip} skipped | "
+              f"{elapsed / 60:.1f}min elapsed, ~{eta / 60:.0f}min left]", flush=True)
+        print(f"    7min : MAE_M1={a7.get('mae_M1')} CRPS_M1={a7.get('crps_M1')} "
+              f"(vs persist {a7.get('crps_persistence')})", flush=True)
+        print(f"    15min: X%withpast(all)={a15.get('X_pct_withpast')} CI{a15.get('X_pct_withpast_CI95')} | "
+              f"transition={t15.get('X_pct_withpast')} CI{t15.get('X_pct_withpast_CI95')} | "
+              f"targetonly={a15.get('X_pct_targetonly')}", flush=True)
 
-    print(f"\n=== SHARD DONE tag={tag} cases={len(cases)} windows={summary['n_windows']} ===", flush=True)
+    print(f"\n=== SHARD DONE tag={tag} cases={len(cases)} ({n_skip} skipped) "
+          f"windows={summary['n_windows']} in {(time.time() - t_start) / 60:.1f}min ===", flush=True)
 
 
 if __name__ == "__main__":
