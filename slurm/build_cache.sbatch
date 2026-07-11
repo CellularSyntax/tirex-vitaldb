@@ -43,7 +43,9 @@ srun \
   bash -lc "
 set -euo pipefail
 export PROJECT_ROOT='${PROJECT_ROOT}'
-bash '${PROJECT_ROOT}/slurm/setup_env.sh'
+# source (not 'bash') so setup_env.sh's exports persist into this shell. Harmless for the
+# cache build (no HF), but keeps both jobs consistent.
+source '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
 
 echo '[cache] Building anesthetic cohort cache + manifest (build_cohort.py) ...'

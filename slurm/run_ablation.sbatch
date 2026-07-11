@@ -63,7 +63,9 @@ srun \
   bash -lc "
 set -euo pipefail
 export PROJECT_ROOT='${PROJECT_ROOT}'
-bash '${PROJECT_ROOT}/slurm/setup_env.sh'
+# MUST be sourced (not 'bash setup_env.sh') so its exports — HF_HOME, HF_HUB_OFFLINE,
+# TORCH_EXTENSIONS_DIR — reach the python process below. A subshell would lose them.
+source '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
 echo '[job] phase3_ablation.py ${RUN_ARGS} ${SHARD_ARGS} --device cuda --batch-size 512'
 PYTHONPATH=scripts:datasets/vitaldb python scripts/phase3_ablation.py ${RUN_ARGS} ${SHARD_ARGS} --device cuda --batch-size 512
