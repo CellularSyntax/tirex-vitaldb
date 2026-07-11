@@ -1,0 +1,21 @@
+{
+  "n_local_scanned": 5406,
+  "excluded": {
+    "no_ART_MBP": 2142,
+    "no_remifentanil": 515,
+    "short_duration": 12,
+    "low_target_coverage": 17,
+    "low_remi_coverage": 20,
+    "unreadable_header": 39,
+    "remi_inactive": 2
+  },
+  "included_N": 2659,
+  "thresholds": {
+    "MIN_DUR_MIN": 60.0,
+    "MIN_TARGET_COV": 0.6,
+    "MIN_REMI_COV": 0.5,
+    "REMI_ACTIVE_MIN_CE": 0.5,
+    "target": "Solar8000/ART_MBP",
+    "covariate": "Orchestra/RFTN20_CE"
+  }
+}

@@ -1,0 +1,15 @@
+# GPU requirements for the cluster (Linux + CUDA). Used inside the NVIDIA PyTorch
+# container, which already provides a CUDA build of torch (must be 2.8<=torch<2.10 for
+# tirex-2 0.1.1) + nvcc/CUDA-toolkit for the sLSTM custom-kernel compile. Do NOT pin
+# torch here — let the container's CUDA torch win; tirex-2 pulls its kernel deps
+# (flashrnn, mlstm_kernels, xlstm). Everything else is our analysis stack.
+tirex-2==0.1.1
+vitaldb
+numpy>=2.1
+scipy
+pandas
+matplotlib
+PyYAML
+huggingface-hub
+certifi
+tqdm

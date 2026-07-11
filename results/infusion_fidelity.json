@@ -1,0 +1,56 @@
+{
+  "n_included": 2659,
+  "remi_ce_coverage": {
+    "median": 0.96,
+    "iqr": [
+      0.9,
+      0.99
+    ],
+    "min": 0.5,
+    "max": 1.0,
+    "n": 2659
+  },
+  "remi_ce_max_ngml": {
+    "median": 5.0,
+    "iqr": [
+      4.0,
+      6.0
+    ],
+    "min": 0.5,
+    "max": 18.01,
+    "n": 2659
+  },
+  "remi_ce_range_ngml": {
+    "median": 4.98,
+    "iqr": [
+      4.0,
+      5.98
+    ],
+    "min": 0.5,
+    "max": 18.01,
+    "n": 2659
+  },
+  "target_coverage": {
+    "median": 0.93,
+    "iqr": [
+      0.89,
+      0.95
+    ],
+    "min": 0.6,
+    "max": 1.0,
+    "n": 2659
+  },
+  "dur_min": {
+    "median": 222.8,
+    "iqr": [
+      164.7,
+      299.2
+    ],
+    "min": 60.4,
+    "max": 1041.6,
+    "n": 2659
+  },
+  "also_have_RFTN_RATE_pct": 100.0,
+  "also_have_PPF_CE_pct": 62.4,
+  "gate_pass": true
+}

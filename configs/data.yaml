@@ -1,0 +1,52 @@
+# VitalDB data / loader configuration (Phase 1). Verified facts in notes/DATA_NOTES.md.
+
+vital_dir: vital_files
+clinical_csv: clinical_data.csv
+cache_dir: outputs/cache   # LOCAL, in-project (iCloud sync disabled for Desktop). Portable: travels
+                           # with the project. Was /Users/admin/DATA/tirex2/cache pre-2026-07-11. See API_NOTES.
+
+# Resampling grid. 5 s keeps horizons within model.future_len=320 steps
+# (10 min = 120 steps) and matches slow MAP dynamics; numerics are ~0.5 Hz native.
+interval_s: 5.0
+# Downsample to this grid at load (denoises MAP; validated to raise covariate sensitivity at
+# transitions 0.8->2.7 mmHg; matches Kapral'24 15s resolution). Cache stays 5s; applied on load.
+resample_to_s: 15.0
+
+# Restrict to the anesthesia window [anestart, aneend] (clamped to recording).
+# anestart can be negative (anesthesia began before recording) -> clamp to 0.
+trim_to_anesthesia: true
+
+tracks:
+  target: Solar8000/ART_MBP           # invasive mean arterial pressure (mmHg)
+  # future-known covariate candidates (drug infusion). Test both per §3.2.
+  future_cov:
+    - Orchestra/RFTN20_RATE           # remifentanil pump rate (mL/hr), step function
+    - Orchestra/RFTN20_CE             # remifentanil effect-site conc (ng/mL), smooth
+    - Orchestra/PPF20_RATE            # propofol pump rate (mL/hr)
+    - Orchestra/PPF20_CE              # propofol effect-site conc (mcg/mL)
+  # past covariates (observed history only)
+  past_cov:
+    - Solar8000/HR                    # heart rate (/min)
+    - Solar8000/PLETH_SPO2            # SpO2 (%)
+    - Solar8000/CVP                   # central venous pressure (mmHg)
+
+# Physiological plausibility ranges -> values outside become NaN (TiRex masks NaN natively).
+# Catches art-line zeroing (negative), fast-flush spikes, disconnection.
+plausible_range:
+  Solar8000/ART_MBP:   [20, 220]
+  Solar8000/HR:        [20, 220]
+  Solar8000/PLETH_SPO2: [50, 100]
+  Solar8000/CVP:       [-5, 40]
+# Drug channels: clip negatives to 0, no upper mask (pump rates can be high transiently).
+drug_min: 0.0
+
+# Despike the MAP target at load: NaN points > threshold from the rolling median (fast-flush/
+# arterial-line transients the range mask misses). Applied on cached loads too (no rebuild).
+despike:
+  enabled: true
+  window: 7            # 7 samples @ 5s = 35s rolling median
+  threshold_mmHg: 25
+
+# A case is "usable" for a target series if the target has at least this fraction of
+# physiological (non-NaN) samples within the window.
+min_target_coverage: 0.6

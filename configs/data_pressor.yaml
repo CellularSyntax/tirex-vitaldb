@@ -1,0 +1,35 @@
+# Pressor-arm loader config (phenylephrine covariate exploration). Same target/past covariates as the
+# anesthetic run, but future_cov = phenylephrine pump rate, and a SEPARATE cache (the anesthetic cache
+# has no pressor tracks). Used with: phase3_ablation.py --config configs/data_pressor.yaml --cov pressor
+#                                                        --cases-file results/pressor_cases_phen.txt
+
+vital_dir: vital_files
+clinical_csv: clinical_data.csv
+cache_dir: outputs/cache_pressor          # fresh cache -> forces .vital read incl. phenylephrine
+
+interval_s: 5.0
+resample_to_s: 15.0
+trim_to_anesthesia: true
+
+tracks:
+  target: Solar8000/ART_MBP
+  future_cov:
+    - Orchestra/PHEN_RATE                  # phenylephrine pump rate (mL/hr; 100 mcg/mL), step function
+  past_cov:
+    - Solar8000/HR
+    - Solar8000/PLETH_SPO2
+    - Solar8000/CVP
+
+plausible_range:
+  Solar8000/ART_MBP:   [20, 220]
+  Solar8000/HR:        [20, 220]
+  Solar8000/PLETH_SPO2: [50, 100]
+  Solar8000/CVP:       [-5, 40]
+drug_min: 0.0
+
+despike:
+  enabled: true
+  window: 7
+  threshold_mmHg: 25
+
+min_target_coverage: 0.6

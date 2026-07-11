@@ -1,0 +1,48 @@
+{
+ "cohort_n": 2659,
+ "art_dataset_n": 3724,
+ "pressors": [
+  {
+   "track": "Orchestra/VASO_RATE",
+   "drug": "vasopressin",
+   "dataset_total": 1,
+   "dataset_with_art": 1,
+   "in_our_cohort": 0
+  },
+  {
+   "track": "Orchestra/NEPI_RATE",
+   "drug": "norepinephrine",
+   "dataset_total": 88,
+   "dataset_with_art": 84,
+   "in_our_cohort": 47
+  },
+  {
+   "track": "Orchestra/PHEN_RATE",
+   "drug": "phenylephrine",
+   "dataset_total": 127,
+   "dataset_with_art": 115,
+   "in_our_cohort": 97
+  },
+  {
+   "track": "Orchestra/EPI_RATE",
+   "drug": "epinephrine",
+   "dataset_total": 9,
+   "dataset_with_art": 9,
+   "in_our_cohort": 4
+  },
+  {
+   "track": "Orchestra/DOPA_RATE",
+   "drug": "dopamine",
+   "dataset_total": 33,
+   "dataset_with_art": 32,
+   "in_our_cohort": 20
+  },
+  {
+   "track": "Orchestra/DOBU_RATE",
+   "drug": "dobutamine",
+   "dataset_total": 3,
+   "dataset_with_art": 3,
+   "in_our_cohort": 1
+  }
+ ]
+}
