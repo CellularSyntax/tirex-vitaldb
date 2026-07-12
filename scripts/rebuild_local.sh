@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 export PYTHONPATH="scripts:datasets/vitaldb${PYTHONPATH:+:$PYTHONPATH}"
 PY=${PY:-python3}
 
-echo "==> 1/5  matched_comparison_*.json  (compare.py, all-cases OOF, from window CSVs)"
+echo "==> 1/6  matched_comparison_*.json  (compare.py, all-cases OOF, from window CSVs)"
 # One matched comparison per baseline window file present. Tag format: baseline-<model>_<cohort>;
 # the matching TiRex cohort is <cohort> (its ablation_windows_<cohort>.csv must exist).
 # The comparisons are independent -> run them in parallel batches (each is a case-clustered
@@ -48,16 +48,26 @@ for pair in $pending; do
 done
 wait
 
-echo "==> 2/5  figures + tables  (paper_figures.py)"
+echo "==> 2/6  comparator subgroup + clinical JSONs  (Fig 5 overlays: forest + lead time)"
+# Fig 5 overlays TFT/PatchTST + best zero-shot foil (Chronos) on the subgroup forest and the
+# lead-time panel. subgroup_forest.py needs only the manifest; clinical_eval.py needs the local
+# VitalDB case cache (fails gracefully if absent -> the figure falls back to whatever JSONs exist).
+for t in baseline-tft_all2873 baseline-patchtst_all2873 baseline-chronos_all2873; do
+  [ -e "results/ablation_windows_${t}.csv" ] || continue
+  $PY scripts/subgroup_forest.py "$t" 5 >/dev/null 2>&1 || echo "    [warn] subgroup_forest $t failed"
+  $PY scripts/clinical_eval.py "$t"      >/dev/null 2>&1 || echo "    [warn] clinical_eval $t failed (no case cache?)"
+done
+
+echo "==> 3/6  figures + tables  (paper_figures.py)"
 $PY scripts/paper_figures.py >/dev/null
 
-echo "==> 3/5  significance tests  (stats_tests.py)"
+echo "==> 4/6  significance tests  (stats_tests.py)"
 $PY scripts/stats_tests.py >/dev/null
 
-echo "==> 4/5  cross-dataset transfer figure + table  (transfer_figure.py)"
+echo "==> 5/6  cross-dataset transfer figure + table  (transfer_figure.py)"
 $PY scripts/transfer_figure.py >/dev/null
 
-echo "==> 5/5  results bundle  (make_results_bundle.py)"
+echo "==> 6/6  results bundle  (make_results_bundle.py)"
 $PY scripts/make_results_bundle.py >/dev/null
 if [ "${SKIP_PDF:-0}" != "1" ] && command -v pdflatex >/dev/null 2>&1; then
   pdflatex -interaction=nonstopmode results_bundle.tex >/dev/null 2>&1

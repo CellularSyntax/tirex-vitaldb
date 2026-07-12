@@ -46,8 +46,15 @@ FIGURES = [
      "both are scored on identical windows with the same metric code. Shaded bands in (b) and error "
      "intervals are case-clustered bootstrap 95\\% CIs; external foils are literature values."),
     ("Fig5_clinical_robustness",
-     "Clinical translation and robustness: early-warning lead time, severity gradient, subgroup "
-     "AUROC forest, and operating characteristics."),
+     "Clinical translation and robustness. (a) Early-warning lead time --- share of hypotension events "
+     "flagged $\\geq$2 and $\\geq$5 min ahead --- for zero-shot TiRex-2 vs trained TFT/PatchTST and the "
+     "best zero-shot foil (Chronos-Bolt); the trained baselines flag marginally more events early, "
+     "consistent with their longer-horizon edge. (b) Severity gradient: TiRex-2 AUROC by hypotension "
+     "threshold/duration. (c) Subgroup robustness: per-subgroup hypotension AUROC at 5 min --- TiRex-2 "
+     "(point + case-clustered 95\\% CI) with TFT, PatchTST and Chronos-Bolt overlaid; TiRex-2 stays "
+     "close to its overall value across every subgroup. (d) TiRex-2 operating characteristics at "
+     "specificity $\\geq$0.90. Trained baselines are all-cases 5-fold out-of-fold; TiRex-2 and "
+     "Chronos-Bolt are zero-shot."),
     ("Fig6_transfer",
      "Cross-dataset transfer / external validation (covariate-free, M0). Impending-hypotension AUROC "
      "vs horizon on each test cohort: (a) VitalDB, (b) the external MOVER cohort. TiRex-2 (zero-shot, "

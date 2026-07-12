@@ -714,19 +714,32 @@ def figure4(tag):
            "d": fig.add_subplot(gs[1, 1]),
            "c": fig.add_subplot(gs[:, 2])}
 
-    # a — lead time (early warning)
-    A = clin["A_early_warning"]
+    # a — early-warning lead time: TiRex-2 vs trained baselines + best zero-shot foil (grouped bars)
     a = axs["a"]
-    med = A["lead_time_min_median"]; iqr = A["lead_time_min_IQR"]
-    # pct_detected_* are already in percent (0-100); bars close together in a short panel
-    a.barh([0], [A["pct_detected_ge2min_ahead"]], color=S.C["M1_light"], height=0.62, label="≥2 min ahead")
-    a.barh([1], [A["pct_detected_ge5min_ahead"]], color=S.C["M1"], height=0.62, label="≥5 min ahead")
-    a.set_yticks([0, 1]); a.set_yticklabels(["detected\n≥2 min", "detected\n≥5 min"])
-    a.set_ylim(-0.6, 1.6)
-    a.set_xlim(0, 100); a.set_xlabel("% of events flagged in advance")
-    a.set_title(f"Early warning — median lead {med:.1f} min (IQR {iqr[0]:.1f}–{iqr[1]:.1f})", loc="center", fontsize=6.8)
-    for yv, key in [(0, "pct_detected_ge2min_ahead"), (1, "pct_detected_ge5min_ahead")]:
-        a.text(min(A[key]+1.5, 92), yv, f"{A[key]:.0f}%", va="center", fontsize=6)
+    LEAD = [("TiRex-2 (zero-shot)", tag, S.C["M1"], True),
+            ("TFT (trained)", f"baseline-tft_{tag}", "#566573", False),
+            ("PatchTST (trained)", f"baseline-patchtst_{tag}", "#3D5A80", False),
+            ("Chronos-Bolt (zero-shot)", f"baseline-chronos_{tag}", "#D35400", False)]
+    lead = {}
+    for disp, t, col, tir in LEAD:
+        p = f"results/clinical_eval_{t}.json"
+        if os.path.exists(p):
+            lead[t] = json.load(open(p))["A_early_warning"]
+    avail = [(disp, t, col, tir) for disp, t, col, tir in LEAD if t in lead]
+    metrics = [("pct_detected_ge2min_ahead", "≥2 min ahead"), ("pct_detected_ge5min_ahead", "≥5 min ahead")]
+    nm = len(avail); bw = 0.82 / max(nm, 1); x = np.arange(len(metrics))
+    for j, (disp, t, col, tir) in enumerate(avail):     # TiRex highlighted; comparators muted
+        off = (j - (nm - 1) / 2) * bw
+        vals = [lead[t][k] for k, _ in metrics]
+        a.bar(x + off, vals, width=bw * 0.92, color=col, alpha=(1.0 if tir else 0.6),
+              edgecolor=(S.C["ink"] if tir else "white"), lw=(0.9 if tir else 0.3),
+              zorder=(4 if tir else 3), label=disp)
+    a.set_xticks(x); a.set_xticklabels([lab for _, lab in metrics])
+    a.set_ylim(0, 100); a.set_ylabel("% of events\nflagged in advance", fontsize=6)
+    med = clin["A_early_warning"]["lead_time_min_median"]
+    a.set_title(f"Early warning (TiRex-2 median lead {med:.1f} min)", loc="center", fontsize=6.8)
+    a.legend(loc="upper center", ncol=2, fontsize=4.7, framealpha=0.9, columnspacing=1.0,
+             handlelength=1.2, borderpad=0.35)
     S.panel_letter(a, "a")
 
     # b — severity gradient (AUROC by threshold/duration vs horizon)
@@ -753,45 +766,70 @@ def figure4(tag):
     d.set_xticks(hs); d.set_ylim(-0.02, 1.02); d.set_box_aspect(1)
     d.legend(loc="lower left", fontsize=5.0, ncol=2, columnspacing=1.0, handlelength=1.4); S.panel_letter(d, "d")
 
-    # c — subgroup forest (tall panel)
-    _forest(axs["c"], sg)
+    # c — subgroup forest (tall panel): TiRex-2 with CI + comparators overlaid per subgroup
+    FOREST_COMP = [("TFT", f"baseline-tft_{tag}", "#566573", "s"),
+                   ("PatchTST", f"baseline-patchtst_{tag}", "#3D5A80", "^"),
+                   ("Chronos-Bolt", f"baseline-chronos_{tag}", "#D35400", "D")]
+    fcomp = []
+    for disp, t, col, mk in FOREST_COMP:
+        p = f"results/subgroup_forest_{t}_h5.json"
+        if os.path.exists(p):
+            fcomp.append((disp, json.load(open(p)), col, mk))
+    _forest(axs["c"], sg, fcomp)
     S.panel_letter(axs["c"], "c", dx=0.02, dy=1.04)
 
     S.save_fig(fig, "Fig5_clinical_robustness")
 
 
-def _forest(ax, sg):
+def _forest(ax, sg, comparators=None):
     """Forest with all text on the RIGHT (outer figure margin) so nothing spills into
-    the neighbouring panels on the left."""
+    the neighbouring panels on the left. TiRex-2 is the CI point; each comparator (trained
+    baseline + best zero-shot foil) is overlaid as a bare marker at the same row, so the
+    subgroup-by-subgroup robustness of every model is visible at once."""
+    from matplotlib.lines import Line2D
+    comparators = comparators or []
+    cmaps = [(disp, {(s["var"], s["level"]): s for s in c["subgroups"]}, col, mk)
+             for disp, c, col, mk in comparators]
     subs = sg["subgroups"]; overall = sg["overall"]
     rows = []
     last_var = None
     for s in subs:
         if s["var"] != last_var:
-            rows.append(("header", s["var"], None, None, None)); last_var = s["var"]
-        rows.append(("row", s["level"], s["auroc"], s["ci"], s.get("n_cases")))
+            rows.append(("header", None, s)); last_var = s["var"]
+        rows.append(("row", None, s))
     rows = rows[::-1]
     y = 0; yticks = []; ylabels = []
-    for kind, lab, au, ci, n in rows:
+    for kind, _, s in rows:
         if kind == "header":
-            ax.text(1.03, y, lab, fontsize=6.2, fontweight="bold", va="center", ha="left",
+            ax.text(1.03, y, s["var"], fontsize=6.2, fontweight="bold", va="center", ha="left",
                     transform=ax.get_yaxis_transform())
             yticks.append(y); ylabels.append("")
         else:
+            for disp, cmap, col, mk in cmaps:                         # comparators behind, no CI
+                cs = cmap.get((s["var"], s["level"]))
+                if cs:
+                    ax.plot(cs["auroc"], y, mk, color=col, ms=2.9, alpha=0.8, mec="white",
+                            mew=0.3, zorder=3)
+            au, ci = s["auroc"], s["ci"]
             ax.errorbar(au, y, xerr=[[au-ci[0]], [ci[1]-au]], fmt="o", color=S.C["M1"],
-                        ms=3.2, capsize=1.8, lw=1.0)
-            yticks.append(y); ylabels.append(f"{lab} (n={n})  {au:.3f}")
+                        ms=3.4, capsize=1.8, lw=1.0, zorder=5)         # TiRex-2 on top with CI
+            yticks.append(y); ylabels.append(f"{s['level']} (n={s.get('n_cases')})  {au:.3f}")
         y += 1
     ax.axvline(overall["auroc"], color=S.C["persist"], lw=0.9, ls="--")
-    # 'overall' key inside the plot (top-left, empty region) — not on the x-axis
-    ax.text(0.03, 0.995, f"– –  overall {overall['auroc']:.3f}", transform=ax.transAxes,
-            fontsize=5.6, color="#555", ha="left", va="top")
+    ax.text(0.03, 0.995, f"– –  TiRex-2 overall {overall['auroc']:.3f}", transform=ax.transAxes,
+            fontsize=5.4, color="#555", ha="left", va="top")
     ax.set_yticks(yticks); ax.set_yticklabels(ylabels, fontsize=5.6)
     ax.yaxis.tick_right()                             # tick labels on the right
-    ax.set_ylim(-0.6, y-0.4); ax.set_xlim(0.88, 0.96); ax.set_xticks([0.88, 0.90, 0.92, 0.94, 0.96])
+    ax.set_ylim(-0.6, y-0.4); ax.set_xlim(0.83, 0.98); ax.set_xticks([0.85, 0.90, 0.95])
     ax.set_xlabel("hypotension AUROC @5 min"); ax.set_title("Subgroup robustness", loc="center")
     ax.spines["left"].set_visible(False); ax.spines["right"].set_visible(True)
     ax.tick_params(axis="y", length=0)
+    if cmaps:
+        handles = [Line2D([], [], marker="o", color=S.C["M1"], ls="none", ms=3.4, label="TiRex-2")]
+        handles += [Line2D([], [], marker=mk, color=col, ls="none", ms=2.9, label=disp)
+                    for disp, _, col, mk in cmaps]
+        ax.legend(handles=handles, loc="lower left", fontsize=4.4, handletextpad=0.3,
+                  borderpad=0.3, labelspacing=0.25, framealpha=0.9)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
