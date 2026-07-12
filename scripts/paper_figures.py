@@ -234,7 +234,6 @@ def figure2(tag):
         c.text(STATX, yp, f"{x:+.2f}%  [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.8)
     c.text(STATX, len(arms)-0.35, "mean [95% CI]", ha="right", va="center", fontsize=5.6, color="#555", style="italic")
     c.axvline(0, color="#999", lw=0.7, ls="--")
-    c.axvline(4.4, color="#CCC", lw=0.6)               # thin rule separating plot from stats column
     c.set_yticks(ypos); c.set_yticklabels([a[0] for a in arms])
     c.set_xlabel("CRPS reduction in transition windows @7 min (%)")
     c.set_title("Which covariate helps?", loc="center")
