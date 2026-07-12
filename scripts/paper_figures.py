@@ -377,6 +377,24 @@ def available_baselines(tag):
             out.append({**b, "tag": bt})
     return out
 
+# Other zero-shot time-series foundation models — evaluated identically to TiRex (no training),
+# univariate (they don't ingest the drug covariate). Their own visual tier, distinct from the
+# trained baselines above. Colours are local to the zero-shot figure/table (no clash there).
+ZEROSHOT_TSFM = [
+    dict(key="chronos", disp="Chronos-Bolt",  col="#D35400", ls="--", mk="s"),
+    dict(key="timesfm", disp="TimesFM-2.5",   col="#8E44AD", ls="-.", mk="^"),
+    dict(key="moirai",  disp="Moirai-1.1-R",  col="#2C7A3F", ls=":",  mk="D"),
+]
+
+def available_zeroshot(tag):
+    out = []
+    for m in ZEROSHOT_TSFM:
+        bt = f"baseline-{m['key']}_{tag}"
+        if (os.path.exists(f"results/ablation_windows_{bt}.csv")
+                and os.path.exists(f"results/matched_comparison_{bt}.json")):
+            out.append({**m, "tag": bt})
+    return out
+
 def load_matched(base_tag):
     return json.load(open(f"results/matched_comparison_{base_tag}.json"))
 
@@ -522,6 +540,50 @@ def figure3(tag):
                   loc="upper right", fontsize=5.0, framealpha=0.9); S.panel_letter(ax_bar, "f")
 
     S.save_fig(fig, "Fig3_hypotension_vs_sota")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIGURE 5 — zero-shot foundation-model benchmark (TiRex vs other TSFMs)
+# ══════════════════════════════════════════════════════════════════════════════
+def figure_zeroshot(tag):
+    """Among zero-shot TSFMs (no training), TiRex vs Chronos/TimesFM/Moirai on the identical
+    matched test split: (a) hypotension AUROC and (b) forecasting CRPS vs horizon. TiRex is the
+    only one that ingests the known future drug covariate."""
+    zs = available_zeroshot(tag)
+    if not zs:
+        print("  (no zero-shot TSFM results — skip Fig 5)", flush=True); return
+    for z in zs:
+        z["M"] = load_matched(z["tag"]); z["rows"], _ = H.load_rows(z["tag"])
+    M = zs[0]["M"]; hs = sorted(int(k) for k in M["per_horizon"])
+    c2s = H.caseid_to_subject(); trows, _ = H.load_rows(tag)
+    tsub = canonical_test_subjects(trows, c2s)
+
+    fig, (axa, axb) = plt.subplots(1, 2, figsize=(S.W2, S.W2 * 0.46),
+                                   gridspec_kw=dict(wspace=0.26, left=0.09, right=0.98, top=0.9, bottom=0.16))
+    # a — hypotension AUROC vs horizon
+    ta = [M["per_horizon"][str(h)]["tirex_M1"]["auroc"] for h in hs]
+    tlo = [M["per_horizon"][str(h)]["tirex_M1"]["ci"][0] for h in hs]
+    thi = [M["per_horizon"][str(h)]["tirex_M1"]["ci"][1] for h in hs]
+    axa.fill_between(hs, tlo, thi, color=S.C["M1"], alpha=0.13, lw=0)
+    axa.plot(hs, ta, "-o", color=S.C["M1"], lw=2.2, ms=4, label="TiRex-2 (ours)", zorder=6)
+    for z in zs:
+        a = [z["M"]["per_horizon"][str(h)]["tft_M1"]["auroc"] for h in hs]
+        axa.plot(hs, a, z["ls"], marker=z["mk"], color=z["col"], ms=3, lw=1.2, label=z["disp"])
+    axa.set_xticks(hs); axa.set_ylim(0.80, 1.0)
+    S.finish(axa, "forecast horizon (min)", "hypotension AUROC", "Impending hypotension")
+    axa.legend(loc="upper right", fontsize=5.6); S.panel_letter(axa, "a")
+
+    # b — forecasting CRPS vs horizon (lower is better)
+    crps_tx = _mean_metric_by_h(trows, c2s, tsub, "crps_M1", hs)
+    axb.plot(hs, crps_tx, "-o", color=S.C["M1"], lw=2.2, ms=4, label="TiRex-2 (ours)", zorder=6)
+    for z in zs:
+        c = _mean_metric_by_h(z["rows"], c2s, tsub, "crps_M1", hs)
+        axb.plot(hs, c, z["ls"], marker=z["mk"], color=z["col"], ms=3, lw=1.2, label=z["disp"])
+    axb.set_xticks(hs)
+    S.finish(axb, "forecast horizon (min)", "CRPS (mmHg)", "Probabilistic forecast")
+    axb.legend(loc="upper left", fontsize=5.6); S.panel_letter(axb, "b")
+
+    S.save_fig(fig, "Fig5_zeroshot_tsfm")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -784,6 +846,29 @@ def table5_matched_forecast(tag):
                  f"Zero-shot TiRex-2 vs trained {names} (M1, with drug covariate).")
 
 
+def table6_zeroshot(tag):
+    """Matched head-to-head among zero-shot TSFMs (TiRex vs Chronos/TimesFM/Moirai)."""
+    zs = available_zeroshot(tag)
+    if not zs:
+        print("  (no zero-shot TSFM results — skip Table 6)", flush=True); return
+    for z in zs:
+        z["M"] = load_matched(z["tag"])
+    M = zs[0]["M"]; hs = sorted(int(k) for k in M["per_horizon"])
+    header = ["Horizon (min)", "TiRex-2 [95% CI]"] + [f"{z['disp']} [95% CI]" for z in zs]
+    def f(x): return "—" if not x else f"{x['auroc']:.3f} [{x['ci'][0]:.3f}, {x['ci'][1]:.3f}]"
+    rows = []
+    for h in hs:
+        row = [h, f(M["per_horizon"][str(h)]["tirex_M1"])]
+        row += [f(z["M"]["per_horizon"][str(h)]["tft_M1"]) for z in zs]
+        rows.append(row)
+    names = ", ".join(z["disp"] for z in zs)
+    _write_table("Table6_zeroshot", header, rows,
+                 f"Table 6. Matched hypotension AUROC among zero-shot time-series foundation models "
+                 f"(TiRex-2 vs {names}) on identical held-out test subjects (n={M['n_test_subjects']} "
+                 f"subjects). All evaluated zero-shot (no training); only TiRex-2 ingests the known "
+                 f"future drug-infusion covariate.")
+
+
 def figure_s_training(tag):
     """Supplementary: trained-baseline train/val pinball-loss curves (convergence, no overfitting).
     One row per baseline (TFT, PatchTST, ...), columns = the M1 (with covariate) / M0 arms."""
@@ -819,9 +904,10 @@ def main():
     print("[paper] Figure 2 ..."); figure2(TAG)
     print("[paper] Figure 3 ..."); figure3(TAG)
     print("[paper] Figure 4 ..."); figure4(TAG)
+    print("[paper] Figure 5 (zero-shot TSFM benchmark) ..."); figure_zeroshot(TAG)
     print("[paper] Supp: training curves ..."); figure_s_training(TAG)
     print("[paper] Tables ..."); table1_cohort(TAG); table2_accuracy(TAG); table3_classification(TAG)
-    table4_matched(TAG); table5_matched_forecast(TAG)
+    table4_matched(TAG); table5_matched_forecast(TAG); table6_zeroshot(TAG)
     print("[paper] Done. Figures in outputs/figs/paper/ ; tables in results/tables/", flush=True)
 
 
