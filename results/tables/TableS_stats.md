@@ -6,15 +6,15 @@
 | Covariate benefit, between-model (CE, transition 7 min) | TFT - TiRex-2 | +5.98% | [+5.38, +6.54] | <0.001 | *** |
 |  | PatchTST - TiRex-2 | +11.33% | [+10.70, +11.97] | <0.001 | *** |
 |  | PatchTST - TFT | +5.35% | [+4.83, +5.86] | <0.001 | *** |
-| Zero-shot AUROC difference (Fig 3) | TiRex-2 - Chronos-Bolt @5min | +0.008 | [+0.002, +0.014] | 0.013 | * |
-|  | TiRex-2 - Chronos-Bolt @10min | +0.011 | [+0.004, +0.019] | 0.003 | ** |
-|  | TiRex-2 - Chronos-Bolt @15min | +0.008 | [+0.001, +0.015] | 0.039 | * |
-|  | TiRex-2 - TimesFM-2.5 @5min | +0.011 | [+0.005, +0.017] | <0.001 | *** |
-|  | TiRex-2 - TimesFM-2.5 @10min | +0.011 | [+0.004, +0.018] | 0.002 | ** |
-|  | TiRex-2 - TimesFM-2.5 @15min | +0.003 | [-0.004, +0.010] | 0.396 | n.s. |
-|  | TiRex-2 - Moirai-1.1-R @5min | +0.010 | [+0.003, +0.016] | 0.005 | ** |
-|  | TiRex-2 - Moirai-1.1-R @10min | +0.011 | [+0.004, +0.019] | 0.009 | ** |
-|  | TiRex-2 - Moirai-1.1-R @15min | +0.011 | [+0.003, +0.019] | 0.012 | * |
+| Zero-shot AUROC difference (Fig 3) | TiRex-2 - Chronos-Bolt @5min | +0.008 | [+0.005, +0.011] | <0.001 | *** |
+|  | TiRex-2 - Chronos-Bolt @10min | +0.009 | [+0.006, +0.012] | <0.001 | *** |
+|  | TiRex-2 - Chronos-Bolt @15min | +0.009 | [+0.005, +0.012] | <0.001 | *** |
+|  | TiRex-2 - TimesFM-2.5 @5min | +0.008 | [+0.006, +0.011] | <0.001 | *** |
+|  | TiRex-2 - TimesFM-2.5 @10min | +0.008 | [+0.004, +0.011] | <0.001 | *** |
+|  | TiRex-2 - TimesFM-2.5 @15min | +0.005 | [+0.002, +0.009] | <0.001 | *** |
+|  | TiRex-2 - Moirai-1.1-R @5min | +0.007 | [+0.003, +0.010] | <0.001 | *** |
+|  | TiRex-2 - Moirai-1.1-R @10min | +0.010 | [+0.007, +0.014] | <0.001 | *** |
+|  | TiRex-2 - Moirai-1.1-R @15min | +0.012 | [+0.008, +0.016] | <0.001 | *** |
 | Trained-SOTA AUROC difference (Fig 4) | TiRex-2 - TFT @5min | +0.006 | [+0.002, +0.009] | 0.002 | ** |
 |  | TiRex-2 - TFT @7min | +0.002 | [-0.002, +0.005] | 0.337 | n.s. |
 |  | TiRex-2 - TFT @15min | -0.011 | [-0.016, -0.007] | <0.001 | *** |
