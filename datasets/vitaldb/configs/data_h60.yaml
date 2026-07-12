@@ -1,0 +1,39 @@
+# VitalDB config HARMONIZED to MOVER's 60 s grid, for the cross-dataset transfer track.
+# Identical to data.yaml except resample_to_s: 60 -> windows match MOVER's cadence & tensor shapes,
+# so a model trained here can be cross-applied to MOVER (and vice versa) via cross_eval.py.
+# Use with --cov rate (RATE covariate, the representation MOVER also has). Tag: vitaldb60.
+
+vital_dir: datasets/vitaldb/data/vital_files
+clinical_csv: datasets/vitaldb/data/clinical_data.csv
+cache_dir: datasets/vitaldb/cache
+cohort_manifest: datasets/vitaldb/cohort_manifest.csv
+
+interval_s: 5.0
+resample_to_s: 60.0            # <-- harmonized to MOVER (was 15 in data.yaml)
+trim_to_anesthesia: true
+
+tracks:
+  target: Solar8000/ART_MBP
+  future_cov:
+    - Orchestra/RFTN20_RATE
+    - Orchestra/RFTN20_CE
+    - Orchestra/PPF20_RATE
+    - Orchestra/PPF20_CE
+  past_cov:
+    - Solar8000/HR
+    - Solar8000/PLETH_SPO2
+    - Solar8000/CVP
+
+plausible_range:
+  Solar8000/ART_MBP:   [20, 220]
+  Solar8000/HR:        [20, 220]
+  Solar8000/PLETH_SPO2: [50, 100]
+  Solar8000/CVP:       [-5, 40]
+drug_min: 0.0
+
+despike:
+  enabled: true
+  window: 7
+  threshold_mmHg: 25
+
+min_target_coverage: 0.6

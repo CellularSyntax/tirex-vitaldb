@@ -27,3 +27,15 @@ def subject_split(caseids, caseid_to_subject, seed: int = 0, fracs=(0.6, 0.2, 0.
         s = subjects[idx]
         label_of_subj[s] = "train" if rank < n_tr else ("val" if rank < n_tr + n_va else "test")
     return {str(c): label_of_subj[subj_of[str(c)]] for c in caseids}
+
+
+def subject_kfold(caseids, caseid_to_subject, k: int = 5, seed: int = 0):
+    """Assign every caseid a fold index 0..k-1 via a seeded subject-level partition
+    (no subject spans two folds). Returns dict caseid -> fold_index. Used for K-fold CV:
+    for fold i, test = fold i, val = fold (i+1)%k, train = the rest."""
+    subj_of = {str(c): str(caseid_to_subject.get(str(c), str(c))) for c in caseids}
+    subjects = sorted(set(subj_of.values()))
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(len(subjects))
+    fold_of_subj = {subjects[idx]: rank % k for rank, idx in enumerate(perm)}   # round-robin over shuffled subjects
+    return {str(c): fold_of_subj[subj_of[str(c)]] for c in caseids}

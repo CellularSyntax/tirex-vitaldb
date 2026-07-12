@@ -221,6 +221,36 @@ pressor. Split is case-level (`PID`; SIS has no patient ID). To use the large NI
 `mover.target_source: nMAP` in the config (3–5 min cadence). `mover_*` `trans_thr` values are first
 guesses (derived-rate units) — refine after the cache reveals the rate distributions.
 
+## Cross-dataset generalization (VitalDB ↔ MOVER)
+
+**Internal robustness — 5-fold subject CV** (out-of-fold predictions over all cases + fold variance):
+```bash
+MODEL=tft COV=mover_rate CONFIG=datasets/mover/configs/data.yaml FOLDS=5 \
+    MATCH=results/ablation_windows_mover_art.csv sbatch slurm/train_baseline.sbatch   # add FOLDS support if needed
+# or directly: python scripts/baselines/train.py --model tft --cov rate --all --folds 5 ...
+```
+`--folds K` writes `ablation_windows_<tag>.csv` covering ALL cases (each in its held-out fold);
+`--folds 1` (default) keeps the single 60/20/20 split.
+
+**External transfer — M0 covariate-free, both datasets harmonized to 60 s.** Train on the full
+source (`--all-train` saves a checkpoint), then `cross_eval.py` applies it to the target:
+```bash
+# source models (train on ALL cases, save checkpoint):
+python scripts/baselines/train.py --config datasets/vitaldb/configs/data_h60.yaml --cov rate --all \
+    --model tft --all-train --save-ckpt results/baseline_ckpt_vitaldb60.pt --device cuda
+python scripts/baselines/train.py --config datasets/mover/configs/data.yaml --cov mover_rate --all \
+    --model tft --all-train --save-ckpt results/baseline_ckpt_mover_art.pt --device cuda
+
+# transfer (M0): source A -> target B, writes xfer-<model>_<A>TO<B>
+python scripts/baselines/cross_eval.py --ckpt results/baseline_ckpt_vitaldb60.pt \
+    --config datasets/mover/configs/data.yaml --cov mover_rate --arm M0 --tag xfer-tft_vitaldb60TOmover_art
+python scripts/baselines/cross_eval.py --ckpt results/baseline_ckpt_mover_art.pt \
+    --config datasets/vitaldb/configs/data_h60.yaml --cov rate --arm M0 --tag xfer-tft_moverTOvitaldb60
+```
+Both datasets must be harmonized (60 s + RATE covariate, same channel count) or cross_eval aborts on
+a shape mismatch. Zero-shot models need no transfer machinery — running them on each dataset natively
+IS the transfer test.
+
 ## Adding another dataset
 Drop it in as `datasets/<name>/` (a loader exposing `load_config`/`_clinical_index`/`load_case` that
 returns the canonical-keyed record, + config with `loader: <name>_loader`), then steps 1–5 run

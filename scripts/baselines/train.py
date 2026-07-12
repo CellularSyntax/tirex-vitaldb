@@ -18,7 +18,7 @@ import yaml
 import phase3_ablation as P
 from baselines import data as D
 from baselines.models import build_model
-from baselines.splits import subject_split
+from baselines.splits import subject_split, subject_kfold
 
 QL = torch.tensor(P.QLEVELS, dtype=torch.float32)
 
@@ -92,6 +92,31 @@ def predict(model, X, dev, norm, bs=512):
     return np.transpose(q, (0, 2, 1))                      # [N, Q, H]
 
 
+def _window_rows(w, q, hsteps, dt, min_run, MED, split_label):
+    """Per-window rows in the phase3 schema for a baseline forecast. q = {'M1':[Q,H], 'M0':[Q,H]}."""
+    truth = w["truth"]; pastMAP = w["past"][:, 0]; fin = pastMAP[np.isfinite(pastMAP)]
+    plast = fin[-1] if len(fin) else np.nan
+    rows = []
+    for h in hsteps:
+        tr = truth[:h]; hm = round(h * dt / 60)
+        row = {"caseid": w["caseid"], "t0": w["t0"], "h_min": hm, "stratum": w["stratum"],
+               "t_event_65": w["t_event_65"], "split": split_label}
+        for c in ("M1", "M0"):
+            cr, ma = P.pinball(tr, q[c][:, :h]); row[f"crps_{c}"] = cr; row[f"mae_{c}"] = ma
+            yl = tr[-1]
+            row[f"mae_inst_{c}"] = float(abs(q[c][MED, h - 1] - yl)) if np.isfinite(yl) else np.nan
+            row[f"crps_{c}_to"] = cr; row[f"mae_{c}_to"] = ma          # no target-only arm for baselines
+            row[f"mae_inst_{c}_to"] = row[f"mae_inst_{c}"]
+        row["crps_persist"] = float(np.nanmean(np.abs(plast - tr))) if np.isfinite(tr).any() else np.nan
+        for thr in P.HYPO_THRS:
+            tk = "" if thr == P.HYPO_THR else f"_{int(thr)}"
+            row[f"hypo_event{tk}"] = P.hypo_event(tr, min_run, thr)
+            row[f"risk_M1{tk}"] = P.hypo_risk(q["M1"][:, :h], thr)
+            row[f"risk_M0{tk}"] = P.hypo_risk(q["M0"][:, :h], thr)
+        rows.append(row)
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
@@ -113,6 +138,13 @@ def main():
     ap.add_argument("--match-tirex", default=None,
                     help="path to a TiRex ablation_windows_*.csv; locks the cohort to its exact "
                          "caseids so windows/splits are identical (the matched comparison).")
+    ap.add_argument("--folds", type=int, default=1,
+                    help="K>1 -> K-fold subject-level CV, out-of-fold predictions over ALL cases "
+                         "(more robust internal eval). 1 -> single canonical 60/20/20 split.")
+    ap.add_argument("--all-train", action="store_true",
+                    help="train on ALL cases (small val holdout), save a checkpoint, write NO windows "
+                         "CSV. Produces the source model for cross-dataset transfer (see cross_eval.py).")
+    ap.add_argument("--save-ckpt", default=None, help="path to save the checkpoint (with --all-train).")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -146,74 +178,88 @@ def main():
           f"cases={len(cases)} device={args.device} tag={tag}", flush=True)
 
     c2s = caseid_to_subject(cfg["clinical_csv"])
-    split = subject_split(cases, c2s, seed=args.seed)     # canonical 60/20/20 subject split
-    by = {s: [c for c in cases if split[c] == s] for s in ("train", "val", "test")}
-    print(f"[base] subjects/cases split -> train {len(by['train'])}  val {len(by['val'])}  test {len(by['test'])}", flush=True)
-
-    t0 = time.time()
-    win = {}
-    for s in ("train", "val", "test"):
-        w, past_names, fut_names = D.build_windows(by[s], cfg, clin, Lc, H, stride, warmup,
-                                                   args.max_origins, dt, min_run, quiet=args.quiet)
-        win[s] = w
-        print(f"[base] {s}: {len(w)} windows ({time.time()-t0:.0f}s)", flush=True)
-    norm = D.fit_norm(win["train"])
-    n_past, n_fut = 1 + len(past_names), len(fut_names)
-
-    preds = {}; hist = {}
-    for arm, use_future in [("M1", True), ("M0", False)]:
-        print(f"[base] === training arm {arm} (use_future={use_future}) ===", flush=True)
-        tr = D.to_tensors(win["train"], norm, use_future)
-        va = D.to_tensors(win["val"], norm, use_future)
-        te = D.to_tensors(win["test"], norm, use_future)
-        torch.manual_seed(args.seed)
-        model = build_model(args.model, n_past, n_fut, H, context_len=Lc, d=args.d_model).to(dev)
-        n_par = sum(p.numel() for p in model.parameters())
-        print(f"[base] {arm}: {n_par/1e3:.0f}k params, {tr[0].shape[0]} train windows", flush=True)
-        model, hist[arm] = train_arm(model, tr, va, args, dev)
-        preds[arm] = predict(model, te, dev, norm, bs=max(256, args.batch_size))
-    json.dump({"tag": tag, "model": args.model, "arms": hist},
-              open(f"results/baseline_history_{tag}.json", "w"), indent=1)
-    print(f"[base] wrote results/baseline_history_{tag}.json (train/val loss curves)", flush=True)
-
-    # ---- write per-window rows in the phase3 schema (test split only) ----
-    os.makedirs("results", exist_ok=True)
     MED = P.MED
+    t0 = time.time()
+    win_all, past_names, fut_names = D.build_windows(cases, cfg, clin, Lc, H, stride, warmup,
+                                                     args.max_origins, dt, min_run, quiet=args.quiet)
+    n_past, n_fut = 1 + len(past_names), len(fut_names)
+    print(f"[base] built {len(win_all)} windows over {len(cases)} cases ({time.time()-t0:.0f}s)", flush=True)
+
+    def fit_arm(win_tr, win_va, norm, use_future, seed):
+        tr = D.to_tensors(win_tr, norm, use_future); va = D.to_tensors(win_va, norm, use_future)
+        torch.manual_seed(seed)
+        model = build_model(args.model, n_past, n_fut, H, context_len=Lc, d=args.d_model).to(dev)
+        model, h = train_arm(model, tr, va, args, dev)
+        return model, h
+
+    # ── mode A: train on ALL cases, save a checkpoint for cross-dataset transfer ──────────
+    if args.all_train:
+        kf = subject_kfold(cases, c2s, k=10, seed=args.seed)          # ~10% subject-level val holdout
+        win_tr = [w for w in win_all if kf[w["caseid"]] != 0]; win_va = [w for w in win_all if kf[w["caseid"]] == 0]
+        norm = D.fit_norm(win_tr)
+        ck = {"model": args.model, "cov": args.cov, "state": {}, "hist": {}, "norm": norm,
+              "n_past": n_past, "n_fut": n_fut, "H": H, "Lc": Lc, "d_model": args.d_model,
+              "past_names": past_names, "fut_names": fut_names, "dt": dt}
+        for arm, uf in [("M1", True), ("M0", False)]:
+            print(f"[base] all-train arm {arm} on {len(win_tr)} windows", flush=True)
+            model, ck["hist"][arm] = fit_arm(win_tr, win_va, norm, uf, args.seed)
+            ck["state"][arm] = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+        os.makedirs("results", exist_ok=True)
+        out = args.save_ckpt or f"results/baseline_ckpt_{tag}.pt"
+        torch.save(ck, out)
+        print(f"[base] saved checkpoint -> {out}  (source model for cross_eval.py). Done in {time.time()-t0:.0f}s", flush=True)
+        return
+
+    # ── mode B/C: internal evaluation — K-fold OOF (folds>1) or single 60/20/20 (folds==1) ─
+    if args.folds > 1:
+        fof = subject_kfold(cases, c2s, k=args.folds, seed=args.seed)
+        splits = [({c for c in cases if fof[c] not in (f, (f + 1) % args.folds)},
+                   {c for c in cases if fof[c] == (f + 1) % args.folds},
+                   {c for c in cases if fof[c] == f}, f) for f in range(args.folds)]
+        print(f"[base] {args.folds}-fold subject CV -> out-of-fold predictions over all cases", flush=True)
+    else:
+        sp = subject_split(cases, c2s, seed=args.seed)
+        splits = [({c for c in cases if sp[c] == "train"}, {c for c in cases if sp[c] == "val"},
+                   {c for c in cases if sp[c] == "test"}, 0)]
+
+    test_items = []; fold_hist = {}; n_par = 0
+    for train_c, val_c, test_c, f in splits:
+        win_tr = [w for w in win_all if w["caseid"] in train_c]
+        win_va = [w for w in win_all if w["caseid"] in val_c]
+        win_te = [w for w in win_all if w["caseid"] in test_c]
+        norm = D.fit_norm(win_tr); preds = {}; hist = {}
+        for arm, uf in [("M1", True), ("M0", False)]:
+            print(f"[base] fold {f} arm {arm}: {len(win_tr)} tr / {len(win_va)} va / {len(win_te)} te", flush=True)
+            model, hist[arm] = fit_arm(win_tr, win_va, norm, uf, args.seed + f)
+            n_par = sum(p.numel() for p in model.parameters())
+            preds[arm] = predict(model, D.to_tensors(win_te, norm, uf), dev, norm, bs=max(256, args.batch_size))
+        fold_hist[f"fold{f}"] = hist
+        for wi, w in enumerate(win_te):
+            test_items.append((w, preds["M1"][wi], preds["M0"][wi], f))
+
+    json.dump({"tag": tag, "model": args.model, "folds": args.folds,
+               "arms": fold_hist["fold0"], "fold_hist": fold_hist},     # 'arms' = fold0 (Fig S compat)
+              open(f"results/baseline_history_{tag}.json", "w"), indent=1)
+
+    # ---- write per-window rows in the phase3 schema (out-of-fold, all cases if folds>1) ----
+    os.makedirs("results", exist_ok=True)
     cols = ["caseid", "t0", "h_min", "stratum", "t_event_65",
             "crps_M1", "mae_M1", "mae_inst_M1", "crps_M0", "mae_M0", "mae_inst_M0",
             "crps_M1_to", "mae_M1_to", "mae_inst_M1_to", "crps_M0_to", "mae_M0_to", "mae_inst_M0_to",
             "crps_persist", "hypo_event", "risk_M1", "risk_M0",
             "hypo_event_55", "risk_M1_55", "risk_M0_55", "hypo_event_50", "risk_M1_50", "risk_M0_50", "split"]
-    path = f"results/ablation_windows_{tag}.csv"
-    n_rows = 0
+    path = f"results/ablation_windows_{tag}.csv"; n_rows = 0
     with open(path, "w", newline="") as fh:
         wr = csv.DictWriter(fh, fieldnames=cols); wr.writeheader()
-        for wi, w in enumerate(win["test"]):
-            truth = w["truth"]; q = {"M1": preds["M1"][wi], "M0": preds["M0"][wi]}   # each [Q,H]
-            pastMAP = w["past"][:, 0]; fin = pastMAP[np.isfinite(pastMAP)]
-            plast = fin[-1] if len(fin) else np.nan
-            for h in hsteps:
-                tr = truth[:h]; hm = round(h * dt / 60)
-                row = {"caseid": w["caseid"], "t0": w["t0"], "h_min": hm, "stratum": w["stratum"],
-                       "t_event_65": w["t_event_65"], "split": "test"}
-                for c in ("M1", "M0"):
-                    cr, ma = P.pinball(tr, q[c][:, :h]); row[f"crps_{c}"] = cr; row[f"mae_{c}"] = ma
-                    yl = tr[-1]
-                    row[f"mae_inst_{c}"] = float(abs(q[c][MED, h - 1] - yl)) if np.isfinite(yl) else np.nan
-                    row[f"crps_{c}_to"] = cr; row[f"mae_{c}_to"] = ma      # baseline has no target-only variant
-                    row[f"mae_inst_{c}_to"] = row[f"mae_inst_{c}"]
-                row["crps_persist"] = float(np.nanmean(np.abs(plast - tr))) if np.isfinite(tr).any() else np.nan
-                for thr in P.HYPO_THRS:
-                    tk = "" if thr == P.HYPO_THR else f"_{int(thr)}"
-                    row[f"hypo_event{tk}"] = P.hypo_event(tr, min_run, thr)
-                    row[f"risk_M1{tk}"] = P.hypo_risk(q["M1"][:, :h], thr)
-                    row[f"risk_M0{tk}"] = P.hypo_risk(q["M0"][:, :h], thr)
+        for w, qM1, qM0, f in test_items:
+            for row in _window_rows(w, {"M1": qM1, "M0": qM0}, hsteps, dt, min_run, MED,
+                                    f"fold{f}" if args.folds > 1 else "test"):
                 wr.writerow(row); n_rows += 1
-    json.dump({"tag": tag, "model": args.model, "n_test_windows": len(win["test"]), "n_rows": n_rows,
-               "n_params_per_arm": n_par, "split_seed": args.seed,
-               "cases": {s: len(by[s]) for s in by}}, open(f"results/baseline_meta_{tag}.json", "w"), indent=1)
-    print(f"[base] wrote {path}  ({n_rows} rows, test split) + results/baseline_meta_{tag}.json", flush=True)
-    print(f"[base] Done in {time.time()-t0:.0f}s. Compare with scripts/baselines/compare.py", flush=True)
+    json.dump({"tag": tag, "model": args.model, "folds": args.folds, "n_windows": len(test_items),
+               "n_rows": n_rows, "n_params_per_arm": n_par, "split_seed": args.seed,
+               "n_cases": len(cases)}, open(f"results/baseline_meta_{tag}.json", "w"), indent=1)
+    print(f"[base] wrote {path}  ({n_rows} rows, {'OOF ' if args.folds>1 else ''}test) + "
+          f"results/baseline_meta_{tag}.json. Done in {time.time()-t0:.0f}s", flush=True)
 
 
 if __name__ == "__main__":
