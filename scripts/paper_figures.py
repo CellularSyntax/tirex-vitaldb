@@ -68,10 +68,11 @@ def figure1(tag):
         ex = np.load(f"outputs/figs/examples_{tag}.npz", allow_pickle=True); picks = _pick_examples(ex)
 
     fig = plt.figure(figsize=(S.W2, S.W2 * 0.80))
-    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], hspace=1.10, wspace=0.42)
-    ax_sch = fig.add_subplot(gs[0, :2])     # a schematic (wide)
-    ax_flow = fig.add_subplot(gs[0, 2])     # b cohort flow
-    ax_ex = [fig.add_subplot(gs[1, i]) for i in range(3)]  # c examples
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], hspace=0.95, wspace=0.42)
+    ax_sch = fig.add_subplot(gs[0, :2])     # a schematic (wide, top-left)
+    ax_flow = fig.add_subplot(gs[:, 2])     # b cohort flow — spans the full figure height
+    sub = gs[1, :2].subgridspec(1, 3, wspace=0.55)
+    ax_ex = [fig.add_subplot(sub[0, i]) for i in range(3)]  # c examples (bottom-left, 3 across)
 
     # a — task schematic (illustrative)
     _schematic(ax_sch)
