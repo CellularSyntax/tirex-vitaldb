@@ -69,6 +69,51 @@ submitting with `MODEL=<name>`.
 
 ---
 
+## 2b. Zero-shot foundation-model sweep (GPU) — other TSFMs as foils
+
+Benchmarks other pretrained time-series foundation models **zero-shot** (no training) on the SAME
+held-out test windows as TiRex and the trained baselines. Unlike TiRex, these models don't natively
+ingest the known future drug trajectory, so they run **covariate-blind** (one forecast per window,
+reused for the M1/M0 columns — their covariate effect is 0 by construction, which is the point).
+Output is tagged `baseline-<model>_<stem>` → `compare.py` and the figures pick them up unchanged.
+
+**Licenses / HF access** — all three are ungated (only the HF_TOKEN you already have is needed;
+no "agree to license" click is required to pull weights):
+
+| Model | HF repo | License | Covariates | pip |
+|---|---|---|---|---|
+| Chronos-Bolt | `amazon/chronos-bolt-base` | Apache-2.0 | none (univariate) | `chronos-forecasting` |
+| TimesFM 2.0 | `google/timesfm-2.0-500m-pytorch` | Apache-2.0 | none (univariate) | `timesfm[torch]` |
+| Moirai-1.1-R | `Salesforce/moirai-1.1-R-large` | CC-BY-NC-4.0 (research OK) | any-variate¹ | `uni2ts` |
+
+¹ Moirai *can* take covariates, but the per-window path in `zeroshot.py` currently runs it
+univariate too — verify its adapter on the cluster before a full sweep (see note below).
+
+```bash
+# --- one-time: build the venv with the three extra libs on top of the container torch ---
+sbatch slurm/setup_tsfm.sbatch          # ~10-15 min; creates .tsfm-venv (reused by every run)
+
+# --- run the sweep (start with chronos: ungated, fastest, no covariate fuss) ---
+MODEL=chronos sbatch slurm/run_zeroshot.sbatch     # -> baseline-chronos_all2873.* + matched_comparison_*
+MODEL=timesfm sbatch slurm/run_zeroshot.sbatch     # -> baseline-timesfm_all2873.*
+MODEL=moirai  sbatch slurm/run_zeroshot.sbatch     # -> baseline-moirai_all2873.*  (verify first)
+
+# phenylephrine cohort (same as the trained baselines):
+MODEL=chronos MATCH=results/ablation_windows_cases115_covpressor.csv COV=pressor \
+    CONFIG=datasets/vitaldb/configs/data_pressor.yaml sbatch slurm/run_zeroshot.sbatch
+```
+Each writes `ablation_windows_baseline-<model>_<stem>.csv` (test split, phase3 schema),
+`baseline_meta_<tag>.json`, and for COV=ce `matched_comparison_baseline-<model>_<stem>.json`.
+Weights download once into `.hf_cache` on first run. **Run `chronos` first** — it validates the
+whole slot-in with the least dependency risk; if the venv build clobbered torch or an import
+fails, that's where it'll show, and it's a quick fix before spending GPU on the others.
+
+Register a new foundation model by adding an adapter to the `ADAPTERS` dict in
+`scripts/baselines/zeroshot.py` (implement `load()` + `forecast()`); everything downstream is
+model-agnostic.
+
+---
+
 ## 3. Pull results to the Mac (for figures/tables)
 
 `outputs/` and the big `ablation_windows_*.csv` are git-ignored, so copy them off the cluster:
