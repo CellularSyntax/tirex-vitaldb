@@ -14,11 +14,17 @@ Case-clustered bootstrap CIs. ZERO-SHOT. Chunked -> figures/results refresh as i
   python scripts/phase3_ablation.py --n-cases 300 --seed 1
 """
 from __future__ import annotations
-import argparse, csv, json, os, time
+import argparse, csv, json, os, time, importlib
 import numpy as np
 import torch
 
-import vitaldb_loader as L
+
+def get_loader(config_path):
+    """Pick the dataset loader named in the config (`loader:` key), default vitaldb_loader.
+    Lets the SAME pipeline run on VitalDB or MOVER — the loader just returns the per-case record."""
+    import yaml
+    raw = yaml.safe_load(open(config_path))
+    return importlib.import_module(raw.get("loader", "vitaldb_loader"))
 
 QLEVELS = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]); MED = 4
 HORIZON_STEPS_MIN = [1, 3, 5, 7, 10, 15]     # steps computed from dt at runtime
@@ -32,6 +38,11 @@ COV_PRESETS = {
     "ce_remi":   {"future": ["Orchestra/RFTN20_CE"], "primary": "Orchestra/RFTN20_CE", "trans_thr": 0.5},
     "rate_remi": {"future": ["Orchestra/RFTN20_RATE"], "primary": "Orchestra/RFTN20_CE", "trans_thr": 0.5},
     "pressor":   {"future": ["Orchestra/PHEN_RATE"], "primary": "Orchestra/PHEN_RATE", "trans_thr": 0.5},  # phenylephrine mL/hr
+    # --- MOVER (SIS): infusion rates are DERIVED (Dose/duration), so the anchor is a rate channel,
+    # not CE (MOVER has no effect-site model). trans_thr is in the derived rate unit (mcg/min) and is
+    # a first guess — refine once the cache reveals the rate distributions (see build_mover_cache).
+    "mover_rate":    {"future": ["Orchestra/RFTN20_RATE", "Orchestra/PPF20_RATE"], "primary": "Orchestra/PPF20_RATE", "trans_thr": 1000.0},
+    "mover_pressor": {"future": ["Orchestra/PHEN_RATE"], "primary": "Orchestra/PHEN_RATE", "trans_thr": 5.0},
 }
 FUTURE_COV = COV_PRESETS["ce"]["future"]     # reassigned from --cov in main()
 PRIMARY_COV = "Orchestra/RFTN20_CE"          # used for window validity + transition tagging
@@ -252,6 +263,7 @@ def main():
     import yaml
     from plot_results import plot_dashboard, plot_examples
     ev = yaml.safe_load(open(args.eval_config))
+    L = get_loader(args.config)                          # vitaldb_loader or mover_loader (per config)
     cfg = L.load_config(args.config); clin = L._clinical_index(cfg["clinical_csv"])
     rec0 = None
     # infer dt after resample by loading one case
@@ -259,7 +271,8 @@ def main():
     if args.cases_file:
         cases = [ln.strip() for ln in open(args.cases_file) if ln.strip()]
     else:
-        included = [r["caseid"] for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv")) if r["include"] == "1"]
+        manifest = cfg.get("cohort_manifest", "datasets/vitaldb/cohort_manifest.csv")   # dataset-specific
+        included = [r["caseid"] for r in csv.DictReader(open(manifest)) if r["include"] in ("1", "True", "true")]
         cases = included if args.all else list(rng.choice(included, min(args.n_cases, len(included)), replace=False))
     global FUTURE_COV, PRIMARY_COV, TRANSITION_THR
     preset = COV_PRESETS[args.cov]

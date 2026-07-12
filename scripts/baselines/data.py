@@ -12,9 +12,9 @@ identical inputs on identical windows. Emits plain numpy arrays (not TiRex Times
 Normalisation statistics are computed on the TRAIN split only and applied to all splits.
 """
 from __future__ import annotations
+import importlib
 import numpy as np
 import phase3_ablation as P
-import vitaldb_loader as L
 
 
 def _finite_fill(a):
@@ -42,6 +42,7 @@ def build_windows(cases, cfg, clin, Lc, H, stride, warmup, max_origins, dt, min_
     """Return a list of window dicts across the given cases (identical origins to TiRex)."""
     past_names = [x for x in P.PAST]
     fut_names = list(P.FUTURE_COV)
+    L = importlib.import_module(cfg.get("loader", "vitaldb_loader"))   # dataset loader per config
     out = []
     for caseid in cases:
         rec = L.load_case(caseid, cfg, clin)

@@ -193,6 +193,35 @@ setup(0) ── cache ──> TiRex runs(1) ──> post-hoc(4) ─┐
 Regenerating figures after any run is just step 5 (seconds). The heavy steps (1–2) are
 deterministic given the seed, so reruns reproduce identical numbers.
 
-## Adding a new dataset (e.g. MOVER)
-Drop it in as `datasets/mover/` (loader + configs + cache), then steps 1–5 run unchanged with the
-new cohort tag — the pipeline in `scripts/` is dataset-agnostic.
+## MOVER external validation (SIS cohort)
+MOVER support lives in `datasets/mover/`. The loader maps SIS columns onto VitalDB **canonical
+channel names** (`HRe`→`Solar8000/HR`, `Propofol  drip` rate→`Orchestra/PPF20_RATE`, …), and the
+pipeline is now loader-agnostic (`phase3_ablation.get_loader()` reads the `loader:` key in the
+config), so steps 1–5 run unchanged with the MOVER config and a `mover_*` covariate preset.
+
+```bash
+# 0. one-time cache build (CPU): streams the SIS tables -> per-PID .npz + clinical_data.csv + manifest
+sbatch slurm/build_mover_cache.sbatch
+#    inspect one case:  PYTHONPATH=datasets/mover python datasets/mover/mover_loader.py <PID>
+
+# 1. TiRex-2 zero-shot on MOVER (GPU) — derived propofol+remi rate as the covariate
+COV=mover_rate    sbatch slurm/run_ablation.sbatch     # -> results/ablation_*_mover_art.*
+COV=mover_pressor sbatch slurm/run_ablation.sbatch     # phenylephrine -> ..._mover_pressor.*
+# (run_ablation's case-block maps mover_rate/mover_pressor to the MOVER config + --tag.)
+
+# 2. matched baselines on MOVER (GPU):
+MODEL=tft      COV=mover_rate CONFIG=datasets/mover/configs/data.yaml \
+    MATCH=results/ablation_windows_mover_art.csv sbatch slurm/train_baseline.sbatch
+# 3. zero-shot TSFM sweep on MOVER: MODEL=chronos MATCH=results/ablation_windows_mover_art.csv \
+#      COV=mover_rate CONFIG=datasets/mover/configs/data.yaml sbatch slurm/run_zeroshot.sbatch
+# 4-5. post-hoc + figures: same scripts with the mover_art tag.
+```
+MOVER target = invasive `MAP_ART` (1-min); cohort ≈ 1,866 (arterial ≥30 min + infusion), 827 with a
+pressor. Split is case-level (`PID`; SIS has no patient ID). To use the large NIBP cohort instead, set
+`mover.target_source: nMAP` in the config (3–5 min cadence). `mover_*` `trans_thr` values are first
+guesses (derived-rate units) — refine after the cache reveals the rate distributions.
+
+## Adding another dataset
+Drop it in as `datasets/<name>/` (a loader exposing `load_config`/`_clinical_index`/`load_case` that
+returns the canonical-keyed record, + config with `loader: <name>_loader`), then steps 1–5 run
+unchanged — the pipeline in `scripts/` is dataset-agnostic.

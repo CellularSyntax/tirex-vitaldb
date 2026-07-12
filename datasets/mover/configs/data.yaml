@@ -1,0 +1,57 @@
+# MOVER (SIS) data / loader configuration — external validation of the VitalDB analysis.
+# The MOVER loader maps SIS columns onto VitalDB CANONICAL channel names, so the whole
+# downstream pipeline (phase3, baselines, zeroshot, figures) runs unchanged with --cov mover_rate.
+
+loader: mover_loader                                  # picked up by phase3_ablation.get_loader()
+
+sis_dir: datasets/mover/EMR                           # raw SIS tables
+clinical_csv: datasets/mover/clinical_data.csv        # built by build_mover_cache.py (PID + demographics + OR times)
+cache_dir: datasets/mover/cache                       # per-PID .npz (built once)
+cohort_manifest: datasets/mover/cohort_manifest.csv   # PID,include (built once)
+
+# MOVER invasive arterial MAP is 1-min native. No finer grid exists -> no upsampling.
+interval_s: 60.0
+resample_to_s: null
+trim_to_anesthesia: true      # OR_start..OR_end window (applied at cache build)
+
+# Canonical channel names (identical to VitalDB) so P.COV_PRESETS / P.PAST resolve unchanged.
+tracks:
+  target: MAP_ART                       # invasive arterial MAP (SIS patient_observations)
+  future_cov:
+    - Orchestra/RFTN20_RATE             # <- Remifentanyl-d derived rate (mcg/min)
+    - Orchestra/PPF20_RATE              # <- Propofol  drip derived rate (mcg/min)
+  past_cov:
+    - Solar8000/HR                      # <- HRe  (bpm)
+    - Solar8000/PLETH_SPO2              # <- SP02 (%)
+    - Solar8000/CVP                     # <- CVPm (mmHg)
+
+# Physiologic plausibility ranges -> out-of-range become NaN. SIS invasive channels carry
+# negative sentinels / spikes (report §3.2), so this masking is mandatory.
+plausible_range:
+  MAP_ART:               [20, 250]
+  Solar8000/HR:          [20, 220]
+  Solar8000/PLETH_SPO2:  [50, 100]
+  Solar8000/CVP:         [-5, 40]
+drug_min: 0.0
+
+despike: {enabled: true, window: 5, threshold_mmHg: 30}   # 5 min rolling median (60 s grid)
+min_target_coverage: 0.5
+
+# ── cache-build parameters (read by build_mover_cache.py) ─────────────────────────────
+mover:
+  target_source: MAP_ART        # invasive cohort. Set to nMAP for the large NIBP cohort (3-5 min).
+  min_map_minutes: 30           # a PID needs >=30 min of target to be included
+  require_infusion: true        # include only PIDs with >=1 whitelisted continuous infusion
+  # SIS Drug_name (verbatim, incl. the double space in "Propofol  drip") -> canonical channel
+  drug_map:
+    "Propofol  drip":  Orchestra/PPF20_RATE
+    "Remifentanyl-d":  Orchestra/RFTN20_RATE
+    "Phenylephrine":   Orchestra/PHEN_RATE
+    "Norepinephrine":  Orchestra/NEPI_RATE
+  # SIS wide-vitals / observations column -> canonical past/target channel
+  vitals_map:                   # from patient_vitals.csv (HR/SpO2/NIBP)
+    HRe:  Solar8000/HR
+    SP02: Solar8000/PLETH_SPO2
+  obs_map:                      # from patient_observations.csv (invasive)
+    MAP_ART: MAP_ART
+    CVPm:    Solar8000/CVP

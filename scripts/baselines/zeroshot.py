@@ -21,7 +21,6 @@ import argparse, csv, json, os, time
 import numpy as np
 
 import phase3_ablation as P
-import vitaldb_loader as L
 from baselines import data as D
 from baselines.splits import subject_split
 
@@ -162,6 +161,7 @@ def main():
 
     import yaml
     ev = yaml.safe_load(open(args.eval_config))
+    L = P.get_loader(args.config)                        # vitaldb_loader or mover_loader (per config)
     cfg = L.load_config(args.config); clin = L._clinical_index(cfg["clinical_csv"])
     preset = P.COV_PRESETS[args.cov]
     P.FUTURE_COV = list(preset["future"]); P.PRIMARY_COV = preset["primary"]; P.TRANSITION_THR = preset["trans_thr"]

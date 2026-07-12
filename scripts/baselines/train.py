@@ -16,7 +16,6 @@ import torch
 import yaml
 
 import phase3_ablation as P
-import vitaldb_loader as L
 from baselines import data as D
 from baselines.models import build_model
 from baselines.splits import subject_split
@@ -118,6 +117,7 @@ def main():
     args = ap.parse_args()
 
     ev = yaml.safe_load(open(args.eval_config))
+    L = P.get_loader(args.config)                        # vitaldb_loader or mover_loader (per config)
     cfg = L.load_config(args.config); clin = L._clinical_index(cfg["clinical_csv"])
     # select the covariate preset (which future channels are fed + the anchor for windowing)
     preset = P.COV_PRESETS[args.cov]
@@ -129,7 +129,8 @@ def main():
         base = f"baseline-{args.model}_{stem}"
         tag = args.tag or (base if (not cov_sfx or base.endswith(cov_sfx)) else base + cov_sfx)
     else:
-        man = [r["caseid"] for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv"))
+        manifest = cfg.get("cohort_manifest", "datasets/vitaldb/cohort_manifest.csv")   # dataset-specific
+        man = [r["caseid"] for r in csv.DictReader(open(manifest))
                if r["include"] in ("1", "True", "true")]
         rng = np.random.default_rng(args.seed)
         cases = man if args.all else list(rng.choice(man, min(args.n_cases, len(man)), replace=False))

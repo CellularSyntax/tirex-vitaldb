@@ -50,13 +50,13 @@ export PROJECT_ROOT='${PROJECT_ROOT}'
 source '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
 echo '[job] training baseline ${MODEL} cov=${COV} matched to ${MATCH}'
-PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/train.py \
+PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/train.py \
     --config ${CONFIG} --model ${MODEL} --cov ${COV} \
     --match-tirex ${MATCH} --device cuda --batch-size 512 --epochs 60
 STEM=\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
 if [ '${COV}' = 'ce' ]; then
   echo '[job] matched classification comparison (TiRex vs ${MODEL})'
-  PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/compare.py \
+  PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/compare.py \
       --tirex \${STEM} --baseline baseline-${MODEL}_\${STEM}
 fi
 echo '[job] Done.'
