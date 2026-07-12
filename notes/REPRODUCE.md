@@ -83,7 +83,7 @@ no "agree to license" click is required to pull weights):
 | Model | HF repo | License | Covariates | pip |
 |---|---|---|---|---|
 | Chronos-Bolt | `amazon/chronos-bolt-base` | Apache-2.0 | none (univariate) | `chronos-forecasting` |
-| TimesFM 2.0 | `google/timesfm-2.0-500m-pytorch` | Apache-2.0 | none (univariate) | `timesfm[torch]` |
+| TimesFM 2.5 | `google/timesfm-2.5-200m-pytorch` | Apache-2.0 | none (univariate) | `timesfm[torch]` |
 | Moirai-1.1-R | `Salesforce/moirai-1.1-R-large` | CC-BY-NC-4.0 (research OK) | any-variate¹ | `uni2ts` |
 
 ¹ Moirai *can* take covariates, but the per-window path in `zeroshot.py` currently runs it

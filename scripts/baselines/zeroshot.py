@@ -67,64 +67,59 @@ class ChronosAdapter(Adapter):
 
 
 class TimesFMAdapter(Adapter):
-    """TimesFM 2.0 (Das et al., 2024) — decoder-only patched TSFM. Apache-2.0, ungated.
-    Univariate; 10 experimental quantile heads (col 0 = mean, cols 1..9 = deciles 0.1..0.9).
-    pip: timesfm[torch]."""
+    """TimesFM 2.5 (Das et al.) — decoder-only patched TSFM. Apache-2.0, ungated. Univariate;
+    calibrated continuous quantile head -> forecast returns (point[B,H], quantile[B,H,10]) with
+    col 0 = mean and cols 1..9 = deciles 0.1..0.9. pip: timesfm[torch] (installs 2.5)."""
     name = "timesfm"
-    def __init__(self, repo="google/timesfm-2.0-500m-pytorch", context_len=None):
+    _H_hint = None
+    def __init__(self, repo="google/timesfm-2.5-200m-pytorch", context_len=None):
         self.repo = repo; self.context_len = context_len
     def load(self, device):
         import timesfm
-        backend = "gpu" if str(device).startswith("cuda") else "cpu"
-        cl = self.context_len or 512
-        cl = (cl // 32) * 32 or 32               # TimesFM context must be a multiple of 32
-        self.model = timesfm.TimesFm(
-            hparams=timesfm.TimesFmHparams(backend=backend, per_core_batch_size=64,
-                                           horizon_len=self._H_hint or 320, context_len=cl,
-                                           num_layers=50, use_positional_embedding=False),
-            checkpoint=timesfm.TimesFmCheckpoint(huggingface_repo_id=self.repo))
+        try:
+            Cls = timesfm.TimesFM_2p5_200M_torch
+        except AttributeError:                    # some builds only expose the submodule path
+            from timesfm.timesfm_2p5.timesfm_2p5_torch import TimesFM_2p5_200M_torch as Cls
+        self.model = Cls.from_pretrained(self.repo)
+        max_ctx = max(512, ((self.context_len or 512) + 31) // 32 * 32)   # >= our context, /32
+        self.model.compile(timesfm.ForecastConfig(
+            max_context=max_ctx, max_horizon=self._H_hint or 320,
+            normalize_inputs=True, use_continuous_quantile_head=True))
         return self
-    _H_hint = None
     def forecast(self, contexts, futures, H):
         inputs = [np.asarray(c, dtype=np.float32) for c in contexts]
-        _, qf = self.model.forecast(inputs, freq=[0] * len(inputs))   # qf: [B, H, 10]
+        _, qf = self.model.forecast(horizon=H, inputs=inputs)   # qf: [B, H, 10]
         qf = np.asarray(qf)[:, :H, 1:10]        # drop mean col -> [B, H, 9] deciles
         return [np.sort(qf[i].T, axis=0) for i in range(qf.shape[0])]  # each [9, H]
 
 
 class MoiraiAdapter(Adapter):
     """Moirai-1.1-R (Woo et al., 2024) — masked-encoder any-variate TSFM. CC-BY-NC-4.0
-    (research use OK). Run univariate here (sample forecasts -> empirical quantiles).
-    pip: uni2ts. NOTE: verify the per-window path on the cluster before a full sweep."""
+    (research use OK). Univariate here: GluonTS predictor -> SampleForecast -> empirical
+    quantiles. pip: uni2ts (+ gluonts, pandas — pulled by uni2ts)."""
     name = "moirai"
+    _H_hint = None
     def __init__(self, repo="Salesforce/moirai-1.1-R-large", context_len=None, num_samples=100):
         self.repo = repo; self.context_len = context_len; self.num_samples = num_samples
     def load(self, device):
-        import torch
         from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
-        self.torch = torch
-        self.module = MoiraiModule.from_pretrained(self.repo)
-        self._device = device
+        module = MoiraiModule.from_pretrained(self.repo)
+        model = MoiraiForecast(module=module, prediction_length=self._H_hint,
+                               context_length=self.context_len or 512, patch_size="auto",
+                               num_samples=self.num_samples, target_dim=1,
+                               feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0)
+        try:
+            self.predictor = model.create_predictor(batch_size=32, device=device)
+        except TypeError:                          # older signature: no device kwarg
+            self.predictor = model.to(device).create_predictor(batch_size=32)
         return self
-    def _predictor(self, H):
-        from uni2ts.model.moirai import MoiraiForecast
-        m = MoiraiForecast(module=self.module, prediction_length=H,
-                           context_length=self.context_len or 512, patch_size="auto",
-                           num_samples=self.num_samples, target_dim=1,
-                           feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0)
-        return m.to(self._device).eval()
     def forecast(self, contexts, futures, H):
-        # Batched sample forecast via the MoiraiForecast module (GluonTS-free tensor path).
-        model = self._predictor(H)
-        Lc = len(contexts[0])
-        past = self.torch.tensor(np.stack(contexts).astype(np.float32)).unsqueeze(-1)  # [B,Lc,1]
-        past = past.to(self._device)
-        obs = self.torch.ones_like(past, dtype=self.torch.bool)
-        pad = self.torch.zeros(past.shape[:2], dtype=self.torch.bool, device=self._device)
-        with self.torch.no_grad():
-            samples = model(past_target=past, past_observed_target=obs, past_is_pad=pad)  # [B,S,H,1]
-        s = samples.float().cpu().numpy()[..., 0]                                          # [B,S,H]
-        return [np.quantile(s[i], QLEVELS, axis=0) for i in range(s.shape[0])]             # each [9,H]
+        import pandas as pd
+        from gluonts.dataset.common import ListDataset
+        ds = ListDataset([{"target": np.asarray(c, dtype=np.float32),
+                           "start": pd.Period("2020-01-01", freq="s")} for c in contexts], freq="s")
+        return [np.quantile(f.samples, QLEVELS, axis=0)              # SampleForecast.samples [S,H]
+                for f in self.predictor.predict(ds)]                 # -> each [9, H], GluonTS order
 
 
 ADAPTERS = {"chronos": ChronosAdapter, "timesfm": TimesFMAdapter, "moirai": MoiraiAdapter}
