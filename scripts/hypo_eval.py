@@ -55,8 +55,10 @@ def roc_points(y, s):
     return fpr, tpr, thr
 
 
+_trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))   # np2 renamed trapz->trapezoid
+
 def auc_xy(x, y):
-    return float(np.trapezoid(y, x))
+    return float(_trapz(y, x))
 
 
 def auroc(y, s):
@@ -68,7 +70,7 @@ def pauroc_highspec(y, s, spec_floor=SPEC_FLOOR):
     fpr, tpr, _ = roc_points(y, s)
     fmax = 1 - spec_floor
     xs = np.linspace(0, fmax, 200); ys = np.interp(xs, fpr, tpr)
-    area = np.trapezoid(ys, xs)
+    area = _trapz(ys, xs)
     amin, amax = 0.5 * fmax * fmax, fmax
     if amax <= amin:
         return np.nan
