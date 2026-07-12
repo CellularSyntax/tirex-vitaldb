@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH -J tirex2-baseline
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -p gpu
+#SBATCH -q a100
+#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH -t 06:00:00
+#SBATCH -o logs/%x-%j.out
+#SBATCH -e logs/%x-%j.err
+#
+# GPU job: train the matched supervised baseline (TFT) on the SAME windows/splits as the
+# zero-shot TiRex-2 run, then score both on the identical held-out test subjects.
+# Reuses the tirex2 container (pure-PyTorch model, no extra deps) and the built caches.
+#
+# Select architecture + cohort at submit time:
+#   MODEL=tft  MATCH=results/ablation_windows_all2873.csv  sbatch slurm/train_baseline.sbatch
+set -euo pipefail
+
+MODEL="${MODEL:-tft}"
+MATCH="${MATCH:-results/ablation_windows_all2873.csv}"
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo "ERROR: submit this with 'sbatch slurm/train_baseline.sbatch' (not 'bash')." >&2; exit 1
+fi
+PROJECT_ROOT="${PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
+[ -f "${PROJECT_ROOT}/requirements_gpu.txt" ] || [ ! -f "${PROJECT_ROOT}/../requirements_gpu.txt" ] || PROJECT_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
+DEFAULT_SQSH="${HOME}/containers/tirex2.sqsh"
+CONTAINER_IMAGE="${CONTAINER_IMAGE:-$( [ -f "$DEFAULT_SQSH" ] && echo "$DEFAULT_SQSH" || echo "nvcr.io#nvidia/pytorch:25.09-py3" )}"
+mkdir -p "${PROJECT_ROOT}/logs" "${PROJECT_ROOT}/results"
+export SLURM_STEP_LAUNCH_TIMEOUT=600
+echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"; echo "MODEL=${MODEL} MATCH=${MATCH}"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${PROJECT_ROOT}:${PROJECT_ROOT}" \
+  --container-workdir="${PROJECT_ROOT}" \
+  bash -lc "
+set -euo pipefail
+export PROJECT_ROOT='${PROJECT_ROOT}'
+source '${PROJECT_ROOT}/slurm/setup_env.sh'
+cd '${PROJECT_ROOT}'
+echo '[job] training baseline ${MODEL} matched to ${MATCH}'
+PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/train.py \
+    --config datasets/vitaldb/configs/data.yaml --model ${MODEL} \
+    --match-tirex ${MATCH} --device cuda --batch-size 512 --epochs 60
+BASE_TAG=baseline-${MODEL}_\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
+TIREX_TAG=\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
+echo '[job] matched comparison'
+PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/compare.py \
+    --tirex \${TIREX_TAG} --baseline \${BASE_TAG}
+echo '[job] Done.'
+"
