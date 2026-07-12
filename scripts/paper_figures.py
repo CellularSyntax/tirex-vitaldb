@@ -286,13 +286,14 @@ def figure2(tag):
     trows, _ = H.load_rows(tag); tsub = canonical_test_subjects(trows, c2s)
     bl = available_baselines(tag)          # trained comparators on the CE cohort (TFT[, PatchTST])
 
-    # 2x2 landscape: top row = accuracy (a, d); bottom row = value of the drug covariate (b, c).
-    # (Univariate zero-shot TSFMs can't read the covariate at all — 0 by construction — so they're
-    # noted in the caption rather than drawn as an empty bar.)
-    fig, axs = plt.subplot_mosaic([["a", "d"], ["b", "c"]],
-                                  figsize=(S.W2 * 1.3, S.W2 * 0.78),
-                                  gridspec_kw=dict(hspace=0.42, wspace=0.24,
-                                                   left=0.08, right=0.98, top=0.93, bottom=0.09))
+    # landscape layout: top row = accuracy (a, d); bottom row = value of the drug covariate (b, c, e).
+    # (Univariate zero-shot TSFMs can't read the covariate at all — 0 by construction — noted in the
+    # caption rather than drawn as an empty bar in e.)
+    fig, axs = plt.subplot_mosaic([["a", "a", "a", "d", "d", "d"],
+                                   ["b", "b", "c", "c", "e", "e"]],
+                                  figsize=(S.W2 * 1.34, S.W2 * 0.64),
+                                  gridspec_kw=dict(hspace=0.5, wspace=1.0,
+                                                   left=0.06, right=0.985, top=0.92, bottom=0.11))
 
     # a — forecast accuracy (MAE vs horizon): zero-shot TiRex vs every trained baseline (matched test)
     a = axs["a"]
@@ -357,6 +358,30 @@ def figure2(tag):
     d = axs["d"]
     _kapral_panel(d, tag)
     S.panel_letter(d, "d")
+
+    # e — covariate value by model (CE, transition @7 min): the same effect as panel c's CE row,
+    # as bars for an at-a-glance read, with case-clustered 95% CIs. Univariate zero-shot TSFMs
+    # (Chronos/TimesFM/Moirai) extract 0 by construction and are noted in the caption, not drawn.
+    e = axs["e"]
+    tb = strat(prim, 7, "transition")
+    bars = [("TiRex-2\n(zero-shot)", tb["X_pct_withpast"], tb["X_pct_withpast_CI95"], S.C["M1"])]
+    for m in MATCHED_BASELINES:
+        r = _baseline_xpct_ci(f"baseline-{m['key']}_{tag}", "transition", 7)
+        if r is not None:
+            bars.append((f"{m['disp']}\n(trained)", r[0], [r[1], r[2]], m["col"]))
+    xpos = np.arange(len(bars))
+    for xi, (lab, v, ci, col) in zip(xpos, bars):
+        e.bar(xi, v, width=0.62, color=col, edgecolor="white", lw=0.5)
+        top = v
+        if ci is not None:
+            e.errorbar(xi, v, yerr=[[v - ci[0]], [ci[1] - v]], fmt="none", ecolor="#333", capsize=2.5, lw=1.0)
+            top = ci[1]
+        e.text(xi, top + 0.3, f"{v:+.1f}%", ha="center", va="bottom", fontsize=5.4)
+    e.axhline(0, color="#999", lw=0.7)
+    e.set_ylim(top=max((ci[1] if ci else v) for _, v, ci, _ in bars) * 1.16 + 0.8)
+    e.set_xticks(xpos); e.set_xticklabels([b[0] for b in bars], fontsize=5.2)
+    S.finish(e, None, "CRPS reduction from\ndrug covariate (%)", "Covariate value by model")
+    S.panel_letter(e, "e")
     S.save_fig(fig, "Fig2_accuracy_covariate")
 
 
