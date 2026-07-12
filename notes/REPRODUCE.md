@@ -173,8 +173,15 @@ Outputs (Nature-style, PDF + 600-dpi PNG in `outputs/figs/paper/`, tables in `re
 | Table 5 | matched forecasting CRPS/MAE (TiRex vs TFT vs PatchTST) |
 | Table 6 | zero-shot TSFM AUROC (TiRex vs Chronos/TimesFM/Moirai) |
 
-`paper_figures.py` degrades gracefully: panels/tables that need a baseline (Fig 2c TFT overlay,
-Fig 3 TFT curves, Tables 4/5, Fig S) are drawn only if the corresponding baseline files are present.
+`paper_figures.py` degrades gracefully: panels/tables that need a baseline (Fig 2c/e overlays,
+Fig 3/4 baseline curves, Tables 4/5/6, Fig S) are drawn only if the corresponding files are present.
+
+Significance tests + one-document bundle:
+```bash
+$PYP python scripts/stats_tests.py all2873        # -> results/tables/TableS_stats.* (paired case-clustered bootstrap)
+python scripts/make_results_bundle.py             # -> results_bundle.tex (all figs+tables+stats)
+pdflatex results_bundle.tex                        # -> results_bundle.pdf (run twice, from repo root)
+```
 
 ---
 
