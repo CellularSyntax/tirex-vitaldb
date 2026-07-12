@@ -746,8 +746,9 @@ def figure4(tag):
     outer = fig.add_gridspec(1, 2, width_ratios=[1.0, 0.33], wspace=0.16,
                              left=0.085, right=0.965, top=0.92, bottom=0.10)
     left = outer[0, 0].subgridspec(3, 1, height_ratios=[0.62, 1.0, 1.0], hspace=0.72)
-    axs = {"a": fig.add_subplot(left[0, 0]), "c": fig.add_subplot(outer[0, 1])}
-    cell_d, cell_b = left[1, 0], left[2, 0]              # d on top, b on the bottom
+    cell_a = left[0, 0]                                  # a: early-warning 1x2 (yield | alarm burden)
+    cell_op, cell_sev = left[1, 0], left[2, 0]          # b: operating strip (top); c: severity strip (below)
+    ax_forest = fig.add_subplot(outer[0, 1])            # d: subgroup forest (spans the right)
 
     # the four models overlaid in panels b & d (fixed colours + markers, matching the forest panel)
     MODELS = [("TiRex-2 (zero-shot)", tag, S.C["M1"], True, "o"),
@@ -755,27 +756,38 @@ def figure4(tag):
               ("PatchTST (trained)", f"baseline-patchtst_{tag}", "#3D5A80", False, "^"),
               ("Chronos-Bolt (zero-shot)", f"baseline-chronos_{tag}", "#D35400", False, "D")]
 
-    # a — early-warning YIELD curve: of all impending events, % flagged >= t min ahead (spec>=0.90 op pt).
-    # One curve carries both discrimination (t=0 intercept == sensitivity) and lead time (the decay).
-    a = axs["a"]
+    # a — early-warning 1x2: (a1) detection yield vs lead time, (a2) alarm-burden trade-off
+    sub_a = cell_a.subgridspec(1, 2, wspace=0.42)
+    a1, a2 = fig.add_subplot(sub_a[0, 0]), fig.add_subplot(sub_a[0, 1])
+    # a1 — YIELD curve: of all impending events, % flagged >= t min ahead (t=0 intercept == sensitivity)
     ts = list(range(0, 16))
     for tt in (2, 5):                                    # faint guides at the clinically-cited lead times
-        a.axvline(tt, color="#CCC", lw=0.7, ls=":", zorder=1)
+        a1.axvline(tt, color="#CCC", lw=0.7, ls=":", zorder=1)
     for disp, mt, col, tir, mk in MODELS:
         cv = (_load_json(f"results/clinical_eval_{mt}.json") or {}).get("A_early_warning", {}).get("lead_curve")
         if not cv:
             continue
-        ys = [cv.get(str(t)) for t in ts]
-        a.plot(ts, ys, "-", marker=mk, color=col, lw=(1.9 if tir else 1.1),
-               ms=(3.2 if tir else 2.6), mew=0.3, mec="white",
-               alpha=(1.0 if tir else 0.75), zorder=(5 if tir else 3), solid_capstyle="round")
-    a.set_xlim(0, 15); a.set_xticks([0, 2, 5, 10, 15]); a.set_ylim(0, None)
-    a.set_xlabel("required lead time (min before MAP < 65 mmHg onset)", fontsize=6)
-    a.set_ylabel("% of impending\nevents flagged", fontsize=6)
-    a.set_title("Early warning — detection yield vs lead time (operating point: spec ≥ 0.90)", fontsize=6.8)
-    S.panel_letter(a, "a")                               # models identified by the shared legend below
+        a1.plot(ts, [cv.get(str(t)) for t in ts], "-", marker=mk, color=col, lw=(1.9 if tir else 1.1),
+                ms=(3.0 if tir else 2.4), mew=0.3, mec="white",
+                alpha=(1.0 if tir else 0.75), zorder=(5 if tir else 3), solid_capstyle="round")
+    a1.set_xlim(0, 15); a1.set_xticks([0, 2, 5, 10, 15]); a1.set_ylim(0, None)
+    a1.set_xlabel("required lead time (min)", fontsize=6)
+    a1.set_ylabel("% of impending\nevents flagged", fontsize=6)
+    a1.set_title("Detection yield vs lead time", fontsize=6.4)
+    # a2 — alarm-burden trade-off: sensitivity vs false-alarms/hour as the alarm threshold sweeps
+    for disp, mt, col, tir, mk in MODELS:
+        at = (_load_json(f"results/clinical_eval_{mt}.json") or {}).get("A_early_warning", {}).get("alarm_tradeoff")
+        if not at or not at.get("fa_per_hour"):
+            continue
+        a2.plot(at["fa_per_hour"], at["sensitivity"], "-", color=col, lw=(1.9 if tir else 1.1),
+                alpha=(1.0 if tir else 0.78), zorder=(5 if tir else 3), solid_capstyle="round")
+    a2.set_xlim(0, None); a2.set_ylim(0, None)
+    a2.set_xlabel("false alarms / hour", fontsize=6)
+    a2.set_ylabel("sensitivity", fontsize=6)
+    a2.set_title("Alarm-burden trade-off", fontsize=6.4)
+    S.panel_letter(a1, "a", dx=-0.30, dy=1.18)           # one letter for the early-warning block
 
-    # d — operating characteristics (TOP strip): 1x4, one subplot per metric, the four models overlaid
+    # b — operating characteristics (TOP strip): 1x4, one subplot per metric, the four models overlaid
     opdata = {mt: (_load_json(f"results/hypo_metrics_{mt}.json") or {}).get("per_horizon", {})
               for _, mt, _, _, _ in MODELS}
     def op_val(mt, metric, h):
@@ -784,10 +796,10 @@ def figure4(tag):
         except (KeyError, TypeError):
             return None
     OP_KEYS = [("sens", "Sensitivity"), ("ppv", "PPV"), ("npv", "NPV"), ("f1", "F1")]
-    _mini_strip(fig, cell_d, OP_KEYS, MODELS, op_val, (0.0, 1.02), "d",
+    _mini_strip(fig, cell_op, OP_KEYS, MODELS, op_val, (0.25, 1.0), "b",
                 "value at spec ≥ 0.90", "Operating characteristics")
 
-    # b — severity-stratified detection (BOTTOM strip): 1x4, one subplot per MAP threshold
+    # c — severity-stratified detection (BOTTOM strip): 1x4, one subplot per MAP threshold
     sevdata = {mt: (_load_json(f"results/clinical_eval_{mt}.json") or {}).get("B_severity", {})
                for _, mt, _, _, _ in MODELS}
     def sev_val(mt, k, h):
@@ -795,16 +807,16 @@ def figure4(tag):
         return d["auroc"] if d else None
     SEV_KEYS = [("MAP<65 (≥1min)", "MAP < 65 mmHg"), ("MAP<55 (≥1min)", "MAP < 55 mmHg"),
                 ("MAP<50 (≥1min)", "MAP < 50 mmHg"), ("MAP<65 (≥5min, sustained)", "MAP < 65 mmHg, sustained")]
-    _mini_strip(fig, cell_b, SEV_KEYS, MODELS, sev_val, (0.66, 1.0), "b",
+    _mini_strip(fig, cell_sev, SEV_KEYS, MODELS, sev_val, (0.85, 1.0), "c",
                 "hypotension AUROC", "Severity-stratified detection")
 
-    # shared model legend for b & d (colours also match a & c) — bottom centre
+    # shared model legend (colours/markers match every panel) — bottom centre
     from matplotlib.lines import Line2D
     mh = [Line2D([], [], color=col, marker=mk, ms=4, lw=(2.0 if tir else 1.1), label=disp)
           for disp, mt, col, tir, mk in MODELS]
     fig.legend(handles=mh, loc="lower center", ncol=4, fontsize=6.2, frameon=False, bbox_to_anchor=(0.42, 0.012))
 
-    # c — subgroup forest (tall panel): TiRex-2 with CI + comparators overlaid per subgroup
+    # d — subgroup forest (tall panel): TiRex-2 with CI + comparators overlaid per subgroup
     FOREST_COMP = [("TFT", f"baseline-tft_{tag}", "#566573", "s"),
                    ("PatchTST", f"baseline-patchtst_{tag}", "#3D5A80", "^"),
                    ("Chronos-Bolt", f"baseline-chronos_{tag}", "#D35400", "D")]
@@ -813,8 +825,8 @@ def figure4(tag):
         p = f"results/subgroup_forest_{t}_h5.json"
         if os.path.exists(p):
             fcomp.append((disp, json.load(open(p)), col, mk))
-    _forest(axs["c"], sg, fcomp)
-    S.panel_letter(axs["c"], "c", dx=0.02, dy=1.04)
+    _forest(ax_forest, sg, fcomp)
+    S.panel_letter(ax_forest, "d", dx=0.02, dy=1.04)
 
     S.save_fig(fig, "Fig5_clinical_robustness")
 

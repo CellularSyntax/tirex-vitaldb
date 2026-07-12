@@ -124,6 +124,17 @@ def analysis_A(table, c2s, dev_subjects, tag, n_boot=800):
     ev_total = int(ev_t.sum())
     out["lead_curve"] = {str(t): (round(float(np.sum(leads >= t)) / ev_total * 100, 1) if ev_total else None)
                          for t in range(0, ALARM_MIN + 1)}
+    # alarm-burden trade-off: sensitivity vs false-alarms/hour as the alarm threshold sweeps
+    # (the clinical "alert operating characteristic" — deployability under alarm fatigue).
+    n_free = int((ev_t == 0).sum())
+    fa_list, sens_list = [], []
+    if ev_total and n_free and np.isfinite(origins_per_hr):
+        for th in np.quantile(sc_t, np.linspace(0.50, 0.999, 30)):
+            al = sc_t >= th
+            se = float(np.sum(al & (ev_t == 1)) / ev_total)
+            fa = float(np.sum(al & (ev_t == 0)) / n_free) * origins_per_hr
+            sens_list.append(round(se, 4)); fa_list.append(round(fa, 4))
+    out["alarm_tradeoff"] = {"fa_per_hour": fa_list, "sensitivity": sens_list}
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.6))
     if len(leads):
