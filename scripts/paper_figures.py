@@ -285,110 +285,126 @@ def _kapral_panel(ax, tag):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 3 — impending-hypotension prediction vs supervised SOTA  (headline)
+# FIGURE 3 — impending-hypotension prediction: zero-shot vs trained vs SOTA  (headline)
 # ══════════════════════════════════════════════════════════════════════════════
-def figure3(tag):
-    hyp = load_hypo(tag); clin = load_clinical(tag)
-    rows, _ = H.load_rows(tag); c2s = H.caseid_to_subject()
-    dev = H.split_subjects([r["caseid"] for r in rows], c2s, seed=0)
+TFT_COL = "#566573"   # slate — the trained TFT baseline
 
-    fig = plt.figure(figsize=(9.6, 5.4))                  # 16:9 landscape — room to breathe
+def load_matched(base_tag):
+    return json.load(open(f"results/matched_comparison_{base_tag}.json"))
+
+def canonical_test_subjects(rows, c2s, seed=0):
+    from baselines.splits import subject_split
+    cohort = sorted({str(r["caseid"]) for r in rows})
+    split = subject_split(cohort, c2s, seed=seed)
+    return {c2s.get(c, c) for c in cohort if split[c] == "test"}
+
+def _scores_subj(rows, c2s, test_subjects, h, risk_col="risk_M1", ev="hypo_event"):
+    y, s = [], []
+    for r in rows:
+        if int(r["h_min"]) != h or r.get(risk_col) in ("", "nan", None):
+            continue
+        if c2s.get(str(r["caseid"]), str(r["caseid"])) not in test_subjects:
+            continue
+        y.append(float(r[ev])); s.append(float(r[risk_col]))
+    return np.array(y), np.array(s)
+
+def figure3(tag):
+    rows, _ = H.load_rows(tag); c2s = H.caseid_to_subject()
+    base_tag = f"baseline-tft_{tag}"
+    M = load_matched(base_tag)                                   # matched head-to-head (canonical split)
+    test_subj = canonical_test_subjects(rows, c2s)               # identical split for every TiRex panel
+    hs = sorted(int(k) for k in M["per_horizon"])
+
+    fig = plt.figure(figsize=(9.6, 5.4))                  # 16:9 landscape
     gs = fig.add_gridspec(2, 3, hspace=0.62, wspace=0.42,
                           left=0.08, right=0.97, top=0.93, bottom=0.11)
-    ax_roc = fig.add_subplot(gs[0, 0])
-    ax_auc = fig.add_subplot(gs[0, 1])
-    ax_cal = fig.add_subplot(gs[0, 2])
-    ax_pr  = fig.add_subplot(gs[1, 0])
-    ax_dca = fig.add_subplot(gs[1, 1])
-    ax_bar = fig.add_subplot(gs[1, 2])
+    ax_roc = fig.add_subplot(gs[0, 0]); ax_auc = fig.add_subplot(gs[0, 1]); ax_cal = fig.add_subplot(gs[0, 2])
+    ax_pr = fig.add_subplot(gs[1, 0]); ax_dca = fig.add_subplot(gs[1, 1]); ax_bar = fig.add_subplot(gs[1, 2])
 
-    # a — ROC at 5 and 7 min with spec>=0.90 operating points
-    for h, col, ls in [(5, S.C["M1"], "-"), (7, S.C["transition"], "-")]:
-        y, s = _test_scores(rows, c2s, dev, h)
-        fpr, tpr, _ = H.roc_points(y, s)
-        au = hyp["per_horizon"][S.hkey(h)]["M1"]["auroc"]
-        ax_roc.plot(fpr, tpr, ls, color=col, lw=1.4, label=f"{h} min (AUROC {au:.3f})")
-        op = hyp["per_horizon"][S.hkey(h)]["M1"]["operating_points"]["spec90"]
-        ax_roc.plot(1-op["spec"], op["sens"], "o", color=col, ms=5, mec="white", mew=0.6, zorder=5)
+    # a — ROC at 5 and 7 min (TiRex, matched test) + spec>=0.90 operating point
+    for h, col in [(5, S.C["M1"]), (7, S.C["transition"])]:
+        y, s = _scores_subj(rows, c2s, test_subj, h)
+        fpr, tpr, _ = H.roc_points(y, s); au = H.auroc(y, s)
+        ax_roc.plot(fpr, tpr, "-", color=col, lw=1.4, label=f"{h} min (AUROC {au:.3f})")
+        ax_roc.plot(0.10, float(np.interp(0.10, fpr, tpr)), "o", color=col, ms=5, mec="white", mew=0.6, zorder=5)
     ax_roc.plot([0, 1], [0, 1], color="#BBB", lw=0.7, ls=":")
     ax_roc.set_xlim(0, 1); ax_roc.set_ylim(0, 1.005)
-    S.finish(ax_roc, "1 − specificity", "sensitivity", "ROC (M1)", ygrid=False)
+    S.finish(ax_roc, "1 − specificity", "sensitivity", "ROC — TiRex-2 (zero-shot)")
     ax_roc.legend(loc="lower right", bbox_to_anchor=(1.0, 0.02)); S.panel_letter(ax_roc, "a")
 
-    # b — AUROC vs horizon, M1 vs M0, with foils overlaid (THE panel)
-    hs = S.horizons_sorted(hyp["per_horizon"])
-    def series(model):
-        a = [hyp["per_horizon"][S.hkey(h)][model]["auroc"] for h in hs]
-        lo = [hyp["per_horizon"][S.hkey(h)][model]["auroc_CI95"][0] for h in hs]
-        hi = [hyp["per_horizon"][S.hkey(h)][model]["auroc_CI95"][1] for h in hs]
-        return a, lo, hi
-    a1, l1, h1 = series("M1"); a0, l0, h0 = series("M0")
-    ax_auc.fill_between(hs, l1, h1, color=S.C["M1"], alpha=0.15, lw=0)
-    ax_auc.plot(hs, a1, "-o", color=S.C["M1"], label="TiRex-2 M1 (ours)")
-    ax_auc.plot(hs, a0, "--s", color=S.C["M0"], ms=3, label="TiRex-2 M0 (ours)")
+    # b — AUROC vs horizon: zero-shot TiRex vs trained TFT (matched) + foils (THE panel)
+    def arr(key, field):
+        return [M["per_horizon"][str(h)][key][field] if M["per_horizon"][str(h)][key] else np.nan for h in hs]
+    ta = arr("tirex_M1", "auroc"); tlo = [M["per_horizon"][str(h)]["tirex_M1"]["ci"][0] for h in hs]; thi = [M["per_horizon"][str(h)]["tirex_M1"]["ci"][1] for h in hs]
+    fa = arr("tft_M1", "auroc"); flo = [M["per_horizon"][str(h)]["tft_M1"]["ci"][0] for h in hs]; fhi = [M["per_horizon"][str(h)]["tft_M1"]["ci"][1] for h in hs]
+    ax_auc.fill_between(hs, tlo, thi, color=S.C["M1"], alpha=0.13, lw=0)
+    ax_auc.plot(hs, ta, "-o", color=S.C["M1"], lw=2.0, label="TiRex-2 (zero-shot, ours)")
+    ax_auc.fill_between(hs, flo, fhi, color=TFT_COL, alpha=0.13, lw=0)
+    ax_auc.plot(hs, fa, "--s", color=TFT_COL, ms=3.5, label="TFT (trained, ours)")
     for h, (ki, ke) in S.KAPRAL_AUROC.items():
         ax_auc.plot(h, ke, "D", color=S.C["kapral"], ms=5, mec="white", mew=0.5, zorder=6)
     ax_auc.plot([], [], "D", color=S.C["kapral"], label="Kapral (TFT, ext.)")
     for h, z in S.ZHU_AUROC.items():
         ax_auc.plot(h, z, "s", color=S.C["zhu"], ms=5, mec="white", mew=0.5, zorder=6)
     ax_auc.plot([], [], "s", color=S.C["zhu"], label="Zhu (Transformer, ext.)")
-    S.finish(ax_auc, "forecast horizon (min)", "hypotension AUROC", "Zero-shot vs supervised SOTA")
+    S.finish(ax_auc, "forecast horizon (min)", "hypotension AUROC", "Zero-shot vs trained vs SOTA")
     ax_auc.set_xticks(hs); ax_auc.set_ylim(0.80, 1.0)
-    ax_auc.legend(loc="upper right", fontsize=5.6); S.panel_letter(ax_auc, "b")
+    ax_auc.legend(loc="upper right", fontsize=5.4); S.panel_letter(ax_auc, "b")
 
-    # c — calibration at 5 min (M1)
-    y5, s5 = _test_scores(rows, c2s, dev, 5)
-    mean_pred, obs_freq, _, _ = H.calibration(y5, s5, n_bins=10)
-    ece = hyp["per_horizon"]["5min"]["M1"]["ece"]
+    # c — calibration at 5 min (TiRex, matched test)
+    y5, s5 = _scores_subj(rows, c2s, test_subj, 5)
+    mp, of, _, ece = H.calibration(y5, s5, n_bins=10)
     ax_cal.plot([0, 1], [0, 1], color="#BBB", lw=0.7, ls=":")
-    ax_cal.plot(mean_pred, obs_freq, "-o", color=S.C["M1"], ms=3)
+    ax_cal.plot(mp, of, "-o", color=S.C["M1"], ms=3)
     ax_cal.text(0.05, 0.9, f"ECE = {ece:.3f}", transform=ax_cal.transAxes, fontsize=6)
     ax_cal.set_xlim(0, 1); ax_cal.set_ylim(0, 1)
-    S.finish(ax_cal, "predicted risk", "observed frequency", "Calibration @5 min", ygrid=False)
+    S.finish(ax_cal, "predicted risk", "observed frequency", "Calibration @5 min")
     S.panel_letter(ax_cal, "c")
 
-    # d — AUPRC vs horizon with prevalence baseline
-    ap = [hyp["per_horizon"][S.hkey(h)]["M1"]["auprc"] for h in hs]
-    apl = [hyp["per_horizon"][S.hkey(h)]["M1"]["auprc_CI95"][0] for h in hs]
-    aph = [hyp["per_horizon"][S.hkey(h)]["M1"]["auprc_CI95"][1] for h in hs]
-    prev = [hyp["per_horizon"][S.hkey(h)]["prevalence"] for h in hs]
-    ax_pr.fill_between(hs, apl, aph, color=S.C["M1"], alpha=0.15, lw=0)
-    ax_pr.plot(hs, ap, "-o", color=S.C["M1"], label="AUPRC (M1)")
+    # d — AUPRC vs horizon (TiRex, matched test) with rising-prevalence baseline
+    ap, prev = [], []
+    for h in hs:
+        y, s = _scores_subj(rows, c2s, test_subj, h)
+        ap.append(H.auprc(y, s)); prev.append(float(y.mean()) if len(y) else np.nan)
+    ax_pr.plot(hs, ap, "-o", color=S.C["M1"], label="AUPRC (TiRex-2)")
     ax_pr.plot(hs, prev, "--", color=S.C["persist"], label="prevalence (chance)")
     S.finish(ax_pr, "forecast horizon (min)", "AUPRC", "Precision–recall")
     ax_pr.set_xticks(hs); ax_pr.set_ylim(0, 1); ax_pr.legend(loc="upper right"); S.panel_letter(ax_pr, "d")
 
-    # e — decision curve @5 min
-    dc = clin["C_decision_curve"]["5"]
-    pt = np.array(dc["pt"]); nb = np.array(dc["nb_model"]); nball = np.array(dc["nb_treat_all"])
-    ax_dca.plot(pt, nb, color=S.C["M1"], lw=1.4, label="TiRex-2 M1")
-    ax_dca.plot(pt, nball, color=S.C["persist"], lw=1.0, label="treat all")
+    # e — decision curve @5 min (TiRex, matched test), net benefit computed inline
+    pts = np.linspace(0.01, 0.5, 40); N = len(y5); pv = y5.mean()
+    nb, nball = [], []
+    for p in pts:
+        fl = s5 >= p; tp = np.sum(fl & (y5 == 1)); fp = np.sum(fl & (y5 == 0)); w = p / (1 - p)
+        nb.append(tp / N - fp / N * w); nball.append(pv - (1 - pv) * w)
+    nb = np.array(nb); nball = np.array(nball)
+    ax_dca.plot(pts, nb, color=S.C["M1"], lw=1.4, label="TiRex-2")
+    ax_dca.plot(pts, nball, color=S.C["persist"], lw=1.0, label="treat all")
     ax_dca.axhline(0, color="#999", lw=0.8, label="treat none")
-    ax_dca.set_ylim(-0.02, max(0.02, np.nanmax(nb)*1.15)); ax_dca.set_xlim(pt.min(), pt.max())
+    ax_dca.set_ylim(-0.02, max(0.02, np.nanmax(nb) * 1.15)); ax_dca.set_xlim(pts.min(), pts.max())
     S.finish(ax_dca, "threshold probability", "net benefit", "Decision curve @5 min")
     ax_dca.legend(loc="upper right"); S.panel_letter(ax_dca, "e")
 
-    # f — head-to-head AUROC bars: ours (zero-shot) vs supervised foils, at 5 & 7 min
-    groups = [5, 7]
-    series_f = [("TiRex-2 M1 (ours)", S.C["M1"], lambda h: hyp["per_horizon"][S.hkey(h)]["M1"]["auroc"]),
-                ("Kapral (ext.)", S.C["kapral"], lambda h: S.KAPRAL_AUROC.get(h, (None, None))[1]),
-                ("Zhu (ext.)", S.C["zhu"], lambda h: S.ZHU_AUROC.get(h))]
+    # f — head-to-head AUROC bars at 5 & 7 min: zero-shot vs trained vs foils (matched split)
     from matplotlib.patches import Patch
-    nb = len(series_f); w = 0.26
-    x = np.arange(len(groups))
+    groups = [5, 7]
+    series_f = [("TiRex-2 (zero-shot)", S.C["M1"], lambda h: M["per_horizon"][str(h)]["tirex_M1"]["auroc"]),
+                ("TFT (trained)", TFT_COL, lambda h: M["per_horizon"][str(h)]["tft_M1"]["auroc"]),
+                ("Kapral (ext.)", S.C["kapral"], lambda h: M["per_horizon"][str(h)]["kapral_ext"]),
+                ("Zhu (ext.)", S.C["zhu"], lambda h: M["per_horizon"][str(h)]["zhu_ext"])]
+    nser = len(series_f); w = 0.20; x = np.arange(len(groups))
     for j, (lab, col, fn) in enumerate(series_f):
-        vals = [fn(h) for h in groups]
-        xs = x + (j - (nb-1)/2)*w
-        for xi, v in zip(xs, vals):
+        for xi, h in zip(x + (j - (nser - 1) / 2) * w, groups):
+            v = fn(h)
             if v is None:
                 continue
             ax_bar.bar(xi, v, width=w, color=col, edgecolor="white", lw=0.4)
-            ax_bar.text(xi, v+0.004, f"{v:.3f}", ha="center", va="bottom", fontsize=5.2, rotation=90)
+            ax_bar.text(xi, v + 0.004, f"{v:.3f}", ha="center", va="bottom", fontsize=5.0, rotation=90)
     ax_bar.set_xticks(x); ax_bar.set_xticklabels([f"{g} min" for g in groups])
-    ax_bar.set_ylim(0.80, 1.0)                         # headroom so the legend clears the bars
-    S.finish(ax_bar, None, "hypotension AUROC", "Head-to-head vs SOTA")
+    ax_bar.set_ylim(0.80, 1.0)
+    S.finish(ax_bar, None, "hypotension AUROC", "Head-to-head @5 / 7 min")
     ax_bar.legend(handles=[Patch(facecolor=col, label=lab) for lab, col, _ in series_f],
-                  loc="upper right", fontsize=5.4, framealpha=0.9); S.panel_letter(ax_bar, "f")
+                  loc="upper right", fontsize=5.0, framealpha=0.9); S.panel_letter(ax_bar, "f")
 
     S.save_fig(fig, "Fig3_hypotension_vs_sota")
 
@@ -593,6 +609,52 @@ def table3_classification(tag):
                  "Ours = zero-shot; foils = task-trained (external VitalDB).")
 
 
+def table4_matched(tag):
+    """Matched head-to-head: zero-shot TiRex vs a TFT we trained on identical data."""
+    base_tag = f"baseline-tft_{tag}"
+    M = load_matched(base_tag)
+    hs = sorted(int(k) for k in M["per_horizon"])
+    header = ["Horizon (min)", "TiRex-2 zero-shot [95% CI]", "TFT trained M1 [95% CI]",
+              "TFT M0", "Kapral ext.", "Zhu ext."]
+    def f(x): return "—" if not x else f"{x['auroc']:.3f} [{x['ci'][0]:.3f}, {x['ci'][1]:.3f}]"
+    def f0(x): return "—" if not x else f"{x['auroc']:.3f}"
+    rows = []
+    for h in hs:
+        d = M["per_horizon"][str(h)]
+        kap = f"{d['kapral_ext']:.3f}" if d.get("kapral_ext") else "—"
+        zhu = f"{d['zhu_ext']:.3f}" if d.get("zhu_ext") else "—"
+        rows.append([h, f(d["tirex_M1"]), f(d["tft_M1"]), f0(d["tft_M0"]), kap, zhu])
+    _write_table("Table4_matched", header, rows,
+                 f"Table 4. Matched hypotension AUROC on identical held-out test subjects "
+                 f"(n={M['n_test_subjects']} subjects, canonical 60/20/20 split). Zero-shot TiRex-2 vs a "
+                 f"Temporal Fusion Transformer trained on the same windows/splits; foils are external references.")
+
+
+def figure_s_training(tag):
+    """Supplementary: TFT baseline train/val pinball-loss curves (convergence, no overfitting)."""
+    base_tag = f"baseline-tft_{tag}"
+    path = f"results/baseline_history_{base_tag}.json"
+    if not os.path.exists(path):
+        print("  (no baseline_history_*.json — skip training-curve supplement)", flush=True); return
+    Hh = json.load(open(path)); arms = Hh["arms"]
+    fig, axs = plt.subplot_mosaic([["M1", "M0"]], figsize=(S.W2, S.W2 * 0.42),
+                                  gridspec_kw=dict(wspace=0.26))
+    for arm, lab in [("M1", "with drug covariate"), ("M0", "no drug covariate")]:
+        ax = axs[arm]; a = arms.get(arm)
+        if not a:
+            continue
+        c = a["curve"]; ep = [r["epoch"] for r in c]
+        ax.plot(ep, [r["train_pinball"] for r in c], "-", color=S.C["persist"], label="train")
+        ax.plot(ep, [r["val_pinball"] for r in c], "-o", color=S.C["M1"], ms=3, label="validation")
+        ax.axvline(a["best_epoch"], color=S.C["event"], lw=0.8, ls="--")
+        ax.text(a["best_epoch"], ax.get_ylim()[1], f" best epoch {a['best_epoch']}",
+                fontsize=5.5, color=S.C["event"], va="top")
+        S.finish(ax, "epoch", "pinball loss (normalised)", f"TFT {arm} — {lab}")
+        ax.legend(loc="upper right")
+    S.panel_letter(axs["M1"], "a"); S.panel_letter(axs["M0"], "b")
+    S.save_fig(fig, "FigS_training_curves")
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     os.makedirs(S.FIG_DIR, exist_ok=True); os.makedirs(S.TAB_DIR, exist_ok=True)
@@ -601,7 +663,8 @@ def main():
     print("[paper] Figure 2 ..."); figure2(TAG)
     print("[paper] Figure 3 ..."); figure3(TAG)
     print("[paper] Figure 4 ..."); figure4(TAG)
-    print("[paper] Tables ..."); table1_cohort(TAG); table2_accuracy(TAG); table3_classification(TAG)
+    print("[paper] Supp: training curves ..."); figure_s_training(TAG)
+    print("[paper] Tables ..."); table1_cohort(TAG); table2_accuracy(TAG); table3_classification(TAG); table4_matched(TAG)
     print("[paper] Done. Figures in outputs/figs/paper/ ; tables in results/tables/", flush=True)
 
 

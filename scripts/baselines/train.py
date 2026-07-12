@@ -48,9 +48,10 @@ def train_arm(model, tr, va, args, dev):
     opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=3)
     n = Ptr.shape[0]; bs = args.batch_size
-    best = float("inf"); best_state = None; bad = 0
+    best = float("inf"); best_state = None; bad = 0; best_ep = 0
+    history = []
     for ep in range(args.epochs):
-        model.train(); perm = torch.randperm(n, device=dev)
+        model.train(); perm = torch.randperm(n, device=dev); tr_sum = 0.0; nb = 0
         for i in range(0, n, bs):
             idx = perm[i:i + bs]
             opt.zero_grad()
@@ -59,20 +60,23 @@ def train_arm(model, tr, va, args, dev):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
+            tr_sum += loss.item(); nb += 1
+        tr_loss = tr_sum / max(nb, 1)
         model.eval()
         with torch.no_grad():
             vloss = pinball_loss(model(Pva, Fva), Yva, Mva, QL).item()
         sched.step(vloss)
+        history.append({"epoch": ep, "train_pinball": round(tr_loss, 5), "val_pinball": round(vloss, 5)})
         if vloss < best - 1e-5:
-            best = vloss; best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}; bad = 0
+            best = vloss; best_ep = ep; best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}; bad = 0
         else:
             bad += 1
-        print(f"    epoch {ep:02d} val_pinball={vloss:.4f} best={best:.4f}{'  *' if bad == 0 else ''}", flush=True)
+        print(f"    epoch {ep:02d} train_pinball={tr_loss:.4f} val_pinball={vloss:.4f} best={best:.4f}{'  *' if bad == 0 else ''}", flush=True)
         if bad >= args.patience:
             print(f"    early stop at epoch {ep}", flush=True); break
     if best_state:
         model.load_state_dict(best_state)
-    return model
+    return model, {"best_epoch": best_ep, "best_val": round(best, 5), "curve": history}
 
 
 @torch.no_grad()
@@ -147,7 +151,7 @@ def main():
     norm = D.fit_norm(win["train"])
     n_past, n_fut = 1 + len(past_names), len(fut_names)
 
-    preds = {}
+    preds = {}; hist = {}
     for arm, use_future in [("M1", True), ("M0", False)]:
         print(f"[base] === training arm {arm} (use_future={use_future}) ===", flush=True)
         tr = D.to_tensors(win["train"], norm, use_future)
@@ -157,8 +161,11 @@ def main():
         model = build_model(args.model, n_past, n_fut, H, d=args.d_model).to(dev)
         n_par = sum(p.numel() for p in model.parameters())
         print(f"[base] {arm}: {n_par/1e3:.0f}k params, {tr[0].shape[0]} train windows", flush=True)
-        model = train_arm(model, tr, va, args, dev)
+        model, hist[arm] = train_arm(model, tr, va, args, dev)
         preds[arm] = predict(model, te, dev, norm, bs=max(256, args.batch_size))
+    json.dump({"tag": tag, "model": args.model, "arms": hist},
+              open(f"results/baseline_history_{tag}.json", "w"), indent=1)
+    print(f"[base] wrote results/baseline_history_{tag}.json (train/val loss curves)", flush=True)
 
     # ---- write per-window rows in the phase3 schema (test split only) ----
     os.makedirs("results", exist_ok=True)
