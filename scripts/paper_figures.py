@@ -226,17 +226,20 @@ def figure2(tag):
             ("RATE (infusion)", RATE_TAG, S.C["rate"]),
             ("Phenylephrine", PRESSOR_TAG, S.C["pressor"])]
     ypos = list(range(len(arms)))[::-1]
+    STATX = 8.15                                       # dedicated stats column, clear of the whiskers
     for yp, (lab, t, col) in zip(ypos, arms):
         p = load_primary(t); blk = strat(p, 7, "transition")
         x = blk["X_pct_withpast"]; ci = blk["X_pct_withpast_CI95"]
         c.errorbar(x, yp, xerr=[[x-ci[0]], [ci[1]-x]], fmt="o", color=col, capsize=2.5, lw=1.2)
-        # label above the point (centred) so it never spills into panel d
-        c.text(x, yp+0.30, f"{x:+.2f}%  [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="center", va="bottom", fontsize=5.8)
+        c.text(STATX, yp, f"{x:+.2f}%  [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.8)
+    c.text(STATX, len(arms)-0.35, "mean [95% CI]", ha="right", va="center", fontsize=5.6, color="#555", style="italic")
     c.axvline(0, color="#999", lw=0.7, ls="--")
+    c.axvline(4.4, color="#CCC", lw=0.6)               # thin rule separating plot from stats column
     c.set_yticks(ypos); c.set_yticklabels([a[0] for a in arms])
     c.set_xlabel("CRPS reduction in transition windows @7 min (%)")
     c.set_title("Which covariate helps?", loc="center")
-    c.set_xlim(-4, 4); c.set_ylim(-0.5, len(arms)-0.15); S.panel_letter(c, "c")
+    c.set_xlim(-4.2, 8.3); c.set_xticks([-4, -2, 0, 2, 4])
+    c.set_ylim(-0.5, len(arms)-0.15); S.panel_letter(c, "c")
 
     # d — instantaneous MAE vs Kapral (external / internal)
     d = axs["d"]
@@ -260,16 +263,18 @@ def _kapral_panel(ax, tag):
     def curve(ds, c):
         pts = sorted(K.get((ds, c), []));
         return np.array([p[0] for p in pts]), np.array([p[1] for p in pts])
-    for ds, col, lab in [("internal", S.C["kapral"], "Kapral internal"),
-                         ("external", "#B07FD0", "Kapral external")]:
+    # foils in muted purple (solid vs dashed to tell them apart); ours pops in bold teal
+    for ds, col, ls, lab in [("internal", "#9B8AB0", "-", "Kapral internal"),
+                             ("external", "#9B8AB0", "--", "Kapral external")]:
         xm, ym = curve(ds, "mean")
         if xm.size:
-            ax.plot(xm, ym, "-", color=col, lw=1.1, label=lab)
+            ax.plot(xm, ym, ls, color=col, lw=1.3, label=lab)
             xl, yl = curve(ds, "lower"); xu, yu = curve(ds, "upper")
             if xl.size and xu.size:
                 yl_i = np.interp(xm, xl, yl); yu_i = np.interp(xm, xu, yu)
-                ax.fill_between(xm, yl_i, yu_i, color=col, alpha=0.12, lw=0)
-    ax.plot(hs, our, "-o", color=S.C["M1"], label="TiRex-2 (ours, M1)")
+                ax.fill_between(xm, yl_i, yu_i, color=col, alpha=0.10, lw=0)
+    ax.plot(hs, our, "-o", color=S.C["M1"], lw=2.4, ms=6, mec="white", mew=1.0,
+            zorder=6, label="TiRex-2 (ours, M1)")
     ax.set_xlim(0, 7.4); ax.set_ylim(0, None)
     S.finish(ax, "forecast distance (min)", "instantaneous MAE (mmHg)", "Accuracy vs Kapral et al. (TFT)")
     ax.legend(loc="upper left")
