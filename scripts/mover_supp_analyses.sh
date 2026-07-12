@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONPATH="scripts:datasets/mover${PYTHONPATH:+:$PYTHONPATH}"
-PY=${PY:-python}
+PY=${PY:-$(command -v python3 || command -v python)}   # cluster login nodes usually have python3, not python
 CFG=datasets/mover/configs/data.yaml
 export CE_CONFIG="$CFG"                                   # cohort-agnostic clinical_eval -> MOVER loader
 export HE_CLINICAL="datasets/mover/clinical_data.csv"     # cohort-agnostic hypo_eval demographics
