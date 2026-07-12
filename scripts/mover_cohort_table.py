@@ -30,10 +30,20 @@ def fnum(r, k):
         return np.nan
 
 
+def norm_caseid(c):
+    """Normalise a caseid for cross-file joins. VitalDB ids are integers (strip zero
+    padding via int); MOVER ids are hex hash strings (keep verbatim)."""
+    s = str(c).strip()
+    try:
+        return str(int(float(s)))
+    except ValueError:
+        return s
+
+
 def windows_caseids(path):
     cids = set()
     for r in csv.DictReader(open(path)):
-        cids.add(str(int(float(r["caseid"]))))
+        cids.add(norm_caseid(r["caseid"]))
     return cids
 
 
@@ -52,7 +62,7 @@ def main():
         sys.exit(f"missing {CLINICAL} — build the MOVER cache first")
 
     keep = windows_caseids(WINDOWS)
-    cd = {str(int(float(r["caseid"]))): r
+    cd = {norm_caseid(r["caseid"]): r
           for r in csv.DictReader(open(CLINICAL, encoding="utf-8-sig"))}
     rows = [cd[c] for c in keep if c in cd]
     n = len(rows)

@@ -93,12 +93,21 @@ def load_rows(tag):
     return rows
 
 
+def norm_caseid(c):
+    """VitalDB ids are integers (strip zero padding); MOVER ids are hex hashes (verbatim)."""
+    s = str(c).strip()
+    try:
+        return str(int(float(s)))
+    except ValueError:
+        return s
+
+
 def caseid_to_subject(clinical):
     m = {}
     for r in csv.DictReader(open(clinical, encoding="utf-8-sig")):
         try:
-            m[str(int(float(r["caseid"])))] = str(r.get("subjectid", r["caseid"]))
-        except (ValueError, KeyError):
+            m[norm_caseid(r["caseid"])] = str(r.get("subjectid", r["caseid"]))
+        except KeyError:
             continue
     return m
 
