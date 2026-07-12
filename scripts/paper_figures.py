@@ -59,32 +59,34 @@ def _test_scores(rows, c2s, dev, h, risk_col="risk_M1", ev_col="hypo_event"):
 def figure1(tag):
     prim = load_primary(tag); hyp = load_hypo(tag)
     flow = json.load(open("results/cohort_flow.json"))
-    ex = np.load(f"outputs/figs/examples_{tag}.npz", allow_pickle=True)
+    n_cohort = len(windows_caseids(tag))
+    # prefer the curated 3-example set (steady/transition/hypotensive) if present
+    cur = f"outputs/figs/examples_curated_{tag}.npz"
+    if os.path.exists(cur):
+        ex = np.load(cur, allow_pickle=True); picks = [0, 1, 2]
+    else:
+        ex = np.load(f"outputs/figs/examples_{tag}.npz", allow_pickle=True); picks = _pick_examples(ex)
 
-    fig = plt.figure(figsize=(S.W2, S.W2 * 0.78))
-    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], hspace=1.05, wspace=0.42)
+    fig = plt.figure(figsize=(S.W2, S.W2 * 0.80))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], hspace=1.10, wspace=0.42)
     ax_sch = fig.add_subplot(gs[0, :2])     # a schematic (wide)
     ax_flow = fig.add_subplot(gs[0, 2])     # b cohort flow
     ax_ex = [fig.add_subplot(gs[1, i]) for i in range(3)]  # c examples
 
     # a — task schematic (illustrative)
     _schematic(ax_sch)
-    S.panel_letter(ax_sch, "a", dx=-0.06)
+    S.panel_letter(ax_sch, "a", dx=-0.10, dy=1.14)
 
-    # b — cohort flow (funnel) + window/prevalence annotation
-    _cohort_flow(ax_flow, flow, prim, hyp)
-    S.panel_letter(ax_flow, "b", dx=-0.10)
+    # b — cohort flow (funnel)
+    _cohort_flow(ax_flow, flow, prim, hyp, n_cohort)
+    S.panel_letter(ax_flow, "b", dx=-0.10, dy=1.14)
 
     # c — three representative forecasts (steady / transition / hypotensive onset)
-    picks = _pick_examples(ex)
     titles = ["Steady", "Transition", "Hypotensive onset"]
     for ax, idx, tt in zip(ax_ex, picks, titles):
         _example_panel(ax, ex, idx, tt)
-    S.panel_letter(ax_ex[0], "c")
-    ax_ex[0].legend(loc="lower left", fontsize=5.5, ncol=1)
-
-    fig.suptitle("Zero-shot intraoperative MAP forecasting with TiRex-2 — study design",
-                 y=0.99, fontsize=9, fontweight="bold")
+    S.panel_letter(ax_ex[0], "c", dx=-0.28, dy=1.14)
+    ax_ex[0].legend(loc="upper left", fontsize=5.5, ncol=1)
     S.save_fig(fig, "Fig1_design_cohort")
 
 
@@ -114,42 +116,36 @@ def _schematic(ax):
     ax2.axvspan(-30, 0, color="#F2F2F2", zorder=0); ax2.axvline(0, color="#888", lw=0.8, ls=":")
     ax2.set_yticks([]); ax2.set_xlabel("time (min)")
     ax2.set_ylabel("drug\ninfusion", fontsize=6)
-    ax2.text(1, 0.82, "known future covariate (M1)", fontsize=5.5, color=S.C["M0"])
+    ax2.set_ylim(-0.05, 1.6)                       # headroom so the label clears the line
+    ax2.text(15, 1.22, "known future covariate (M1)", fontsize=5.5, color=S.C["M0"], ha="right")
     ax2.spines["left"].set_visible(False)
     ax.set_xlim(-30, 15); ax.set_ylim(55, 100); ax.set_xticks([])
     ax.set_ylabel("MAP (mmHg)"); ax.set_title("Forecasting task", loc="left")
     ax.legend(loc="lower left", fontsize=5.5)
 
 
-def _cohort_flow(ax, flow, prim, hyp):
+def _cohort_flow(ax, flow, prim, hyp, n_cohort):
     ax.axis("off")
-    n0 = flow["n_local_scanned"]; nN = flow["included_N"]
-    exc = flow["excluded"]
+    n0 = flow["n_local_scanned"]; nCand = flow["included_N"]
     nw = prim["n_windows"]
-    ntr = strat(prim, 7, "transition")["n_windows"]; nst = strat(prim, 7, "steady")["n_windows"]
     steps = [
         (f"VitalDB cases scanned\nn = {n0:,}", "#E8EEF2"),
-        (f"Anesthetic cohort\n(remi + propofol)\nn = {nN:,}", S.C["M1_light"]),
+        (f"Anesthetic cohort\n(remifentanil + propofol)\nn = {nCand:,}", S.C["M1_light"]),
+        (f"Cases with ≥ 1 window\nn = {n_cohort:,}", "#CFE3E7"),
         (f"Forecast windows\nn = {nw:,}", "#EAD9BD"),
     ]
-    y = 0.92
+    box_h = 0.165; gap = 0.075; y = 0.98
     for i, (txt, col) in enumerate(steps):
-        ax.add_patch(plt.Rectangle((0.08, y-0.16), 0.84, 0.15, transform=ax.transAxes,
-                     facecolor=col, edgecolor="#888", lw=0.6, zorder=2))
-        ax.text(0.5, y-0.085, txt, transform=ax.transAxes, ha="center", va="center", fontsize=6, zorder=3)
+        top = y - i*(box_h+gap); bot = top - box_h
+        ax.add_patch(plt.Rectangle((0.04, bot), 0.92, box_h, transform=ax.transAxes,
+                     facecolor=col, edgecolor="#777", lw=0.7, zorder=2))
+        ax.text(0.5, (top+bot)/2, txt, transform=ax.transAxes, ha="center", va="center",
+                fontsize=6.4, zorder=3)
         if i < len(steps)-1:
-            ax.annotate("", xy=(0.5, y-0.30), xytext=(0.5, y-0.17), xycoords="axes fraction",
-                        arrowprops=dict(arrowstyle="-|>", color="#666", lw=0.9))
-        y -= 0.30
-    top_exc = sorted(exc.items(), key=lambda kv: -kv[1])[:3]
-    ax.text(0.5, y+0.04, "excluded: " + "; ".join(f"{k.replace('_',' ')} {v:,}" for k, v in top_exc),
-            transform=ax.transAxes, ha="center", va="top", fontsize=5, color="#666")
-    ax.text(0.5, y-0.03, f"transition {ntr:,} · steady {nst:,} windows", transform=ax.transAxes,
-            ha="center", va="top", fontsize=5.5, color="#333")
-    prev = ", ".join(f"{h}m {hyp['per_horizon'][S.hkey(h)]['prevalence']*100:.0f}%" for h in [1,5,15])
-    ax.text(0.5, y-0.11, f"hypotension prevalence: {prev}", transform=ax.transAxes,
-            ha="center", va="top", fontsize=5.5, color=S.C["event"])
-    ax.set_title("Cohort & windows", loc="center")
+            ax.annotate("", xy=(0.5, bot-gap+0.008), xytext=(0.5, bot-0.004),
+                        xycoords="axes fraction",
+                        arrowprops=dict(arrowstyle="-|>", color="#666", lw=1.0))
+    ax.set_ylim(0, 1)
 
 
 def _pick_examples(ex):
@@ -222,7 +218,7 @@ def figure2(tag):
         b.fill_between(hs, lo, hi, color=col, alpha=0.15, lw=0)
     b.axhline(0, color="#999", lw=0.7, ls="--")
     S.finish(b, "forecast horizon (min)", "CRPS reduction M0→M1 (%)", "Value of the drug covariate")
-    b.set_xticks(hs); b.legend(loc="upper right"); S.panel_letter(b, "b")
+    b.set_xticks(hs); b.legend(loc="upper left"); S.panel_letter(b, "b")
 
     # c — covariate representation: CE vs RATE vs pressor (transition, 7 min) forest
     c = axs["c"]
@@ -234,20 +230,18 @@ def figure2(tag):
         p = load_primary(t); blk = strat(p, 7, "transition")
         x = blk["X_pct_withpast"]; ci = blk["X_pct_withpast_CI95"]
         c.errorbar(x, yp, xerr=[[x-ci[0]], [ci[1]-x]], fmt="o", color=col, capsize=2.5, lw=1.2)
-        c.text(ci[1]+0.15, yp, f"{x:+.2f}% [{ci[0]:+.2f}, {ci[1]:+.2f}]", va="center", fontsize=5.8)
+        # label above the point (centred) so it never spills into panel d
+        c.text(x, yp+0.30, f"{x:+.2f}%  [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="center", va="bottom", fontsize=5.8)
     c.axvline(0, color="#999", lw=0.7, ls="--")
     c.set_yticks(ypos); c.set_yticklabels([a[0] for a in arms])
     c.set_xlabel("CRPS reduction in transition windows @7 min (%)")
     c.set_title("Which covariate helps?", loc="center")
-    c.set_xlim(-4, 4); c.set_ylim(-0.6, len(arms)-0.4); S.panel_letter(c, "c")
+    c.set_xlim(-4, 4); c.set_ylim(-0.5, len(arms)-0.15); S.panel_letter(c, "c")
 
     # d — instantaneous MAE vs Kapral (external / internal)
     d = axs["d"]
     _kapral_panel(d, tag)
     S.panel_letter(d, "d")
-
-    fig.suptitle("Forecast accuracy and the value of the known future drug trajectory",
-                 y=0.99, fontsize=9, fontweight="bold")
     S.save_fig(fig, "Fig2_accuracy_covariate")
 
 
@@ -289,14 +283,15 @@ def figure3(tag):
     rows, _ = H.load_rows(tag); c2s = H.caseid_to_subject()
     dev = H.split_subjects([r["caseid"] for r in rows], c2s, seed=0)
 
-    fig = plt.figure(figsize=(S.W2, S.W2*0.66))
-    gs = fig.add_gridspec(2, 3, hspace=0.5, wspace=0.42)
+    fig = plt.figure(figsize=(9.6, 5.4))                  # 16:9 landscape — room to breathe
+    gs = fig.add_gridspec(2, 3, hspace=0.62, wspace=0.42,
+                          left=0.08, right=0.97, top=0.93, bottom=0.11)
     ax_roc = fig.add_subplot(gs[0, 0])
     ax_auc = fig.add_subplot(gs[0, 1])
     ax_cal = fig.add_subplot(gs[0, 2])
     ax_pr  = fig.add_subplot(gs[1, 0])
     ax_dca = fig.add_subplot(gs[1, 1])
-    ax_txt = fig.add_subplot(gs[1, 2]); ax_txt.axis("off")
+    ax_bar = fig.add_subplot(gs[1, 2])
 
     # a — ROC at 5 and 7 min with spec>=0.90 operating points
     for h, col, ls in [(5, S.C["M1"], "-"), (7, S.C["transition"], "-")]:
@@ -329,10 +324,9 @@ def figure3(tag):
     for h, z in S.ZHU_AUROC.items():
         ax_auc.plot(h, z, "s", color=S.C["zhu"], ms=5, mec="white", mew=0.5, zorder=6)
     ax_auc.plot([], [], "s", color=S.C["zhu"], label="Zhu (Transformer, ext.)")
-    ax_auc.axvspan(0.5, 7, color="#F4F7F8", zorder=0)
     S.finish(ax_auc, "forecast horizon (min)", "hypotension AUROC", "Zero-shot vs supervised SOTA")
     ax_auc.set_xticks(hs); ax_auc.set_ylim(0.80, 1.0)
-    ax_auc.legend(loc="lower left", fontsize=5.6); S.panel_letter(ax_auc, "b")
+    ax_auc.legend(loc="upper right", fontsize=5.6); S.panel_letter(ax_auc, "b")
 
     # c — calibration at 5 min (M1)
     y5, s5 = _test_scores(rows, c2s, dev, 5)
@@ -366,25 +360,28 @@ def figure3(tag):
     S.finish(ax_dca, "threshold probability", "net benefit", "Decision curve @5 min")
     ax_dca.legend(loc="upper right"); S.panel_letter(ax_dca, "e")
 
-    # f (text) — headline summary numbers
-    m5 = hyp["per_horizon"]["5min"]["M1"]; op = m5["operating_points"]["spec90"]
-    lines = [
-        "Headline (zero-shot, held-out test)",
-        "",
-        f"AUROC @5 min:  {m5['auroc']:.3f}  [{m5['auroc_CI95'][0]:.3f}, {m5['auroc_CI95'][1]:.3f}]",
-        f"   vs Kapral ext. 0.903 · Zhu 0.904",
-        f"AUROC @7 min:  {hyp['per_horizon']['7min']['M1']['auroc']:.3f}",
-        f"   vs Kapral ext. 0.867",
-        "",
-        f"At spec ≥ 0.90 (5 min):",
-        f"   sens {op['sens']:.2f} · PPV {op['ppv']:.2f} · NPV {op['npv']:.2f} · F1 {op['f1']:.2f}",
-        f"pAUROC(spec≥0.9): {m5['pauroc_spec90']:.3f}  ·  ECE {m5['ece']:.3f}",
-    ]
-    ax_txt.text(0.0, 0.98, "\n".join(lines), va="top", ha="left", fontsize=6.2, family="sans-serif")
-    S.panel_letter(ax_txt, "f", dx=0.0)
+    # f — head-to-head AUROC bars: ours (zero-shot) vs supervised foils, at 5 & 7 min
+    groups = [5, 7]
+    series_f = [("TiRex-2 M1 (ours)", S.C["M1"], lambda h: hyp["per_horizon"][S.hkey(h)]["M1"]["auroc"]),
+                ("Kapral (ext.)", S.C["kapral"], lambda h: S.KAPRAL_AUROC.get(h, (None, None))[1]),
+                ("Zhu (ext.)", S.C["zhu"], lambda h: S.ZHU_AUROC.get(h))]
+    from matplotlib.patches import Patch
+    nb = len(series_f); w = 0.26
+    x = np.arange(len(groups))
+    for j, (lab, col, fn) in enumerate(series_f):
+        vals = [fn(h) for h in groups]
+        xs = x + (j - (nb-1)/2)*w
+        for xi, v in zip(xs, vals):
+            if v is None:
+                continue
+            ax_bar.bar(xi, v, width=w, color=col, edgecolor="white", lw=0.4)
+            ax_bar.text(xi, v+0.004, f"{v:.3f}", ha="center", va="bottom", fontsize=5.2, rotation=90)
+    ax_bar.set_xticks(x); ax_bar.set_xticklabels([f"{g} min" for g in groups])
+    ax_bar.set_ylim(0.80, 0.96)
+    S.finish(ax_bar, None, "hypotension AUROC", "Head-to-head vs SOTA")
+    ax_bar.legend(handles=[Patch(facecolor=col, label=lab) for lab, col, _ in series_f],
+                  loc="upper right", fontsize=5.4); S.panel_letter(ax_bar, "f")
 
-    fig.suptitle("Impending-hypotension prediction: zero-shot TiRex-2 matches or exceeds task-trained models",
-                 y=0.99, fontsize=9, fontweight="bold")
     S.save_fig(fig, "Fig3_hypotension_vs_sota")
 
 
@@ -393,9 +390,13 @@ def figure3(tag):
 # ══════════════════════════════════════════════════════════════════════════════
 def figure4(tag):
     clin = load_clinical(tag); hyp = load_hypo(tag); sg = load_subgroup(tag, 5)
-    fig, axs = plt.subplot_mosaic([["a", "c"], ["b", "c"], ["d", "c"]],
-                                  figsize=(S.W2, S.W2*0.78),
-                                  gridspec_kw=dict(hspace=0.7, wspace=0.35, width_ratios=[1, 1]))
+    fig = plt.figure(figsize=(8.6, 4.9))                  # landscape
+    gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 1.0, 0.95], height_ratios=[0.82, 1.0],
+                          hspace=0.5, wspace=0.42, left=0.07, right=0.83, top=0.91, bottom=0.11)
+    axs = {"a": fig.add_subplot(gs[0, 0:2]),
+           "b": fig.add_subplot(gs[1, 0]),
+           "d": fig.add_subplot(gs[1, 1]),
+           "c": fig.add_subplot(gs[:, 2])}
 
     # a — lead time (early warning)
     A = clin["A_early_warning"]
@@ -421,7 +422,8 @@ def figure4(tag):
         au = [d[str(h)]["auroc"] for h in hs]
         b.plot(hs, au, ls, color=col, marker=mk, ms=3, label=name.replace(" (", "\n("))
     S.finish(b, "forecast horizon (min)", "AUROC", "Severity gradient")
-    b.set_ylim(0.75, 1.0); b.legend(loc="lower left", fontsize=5.2); S.panel_letter(b, "b")
+    b.set_ylim(0.68, 1.0); b.set_box_aspect(1)
+    b.legend(loc="lower left", fontsize=4.8, labelspacing=0.25, handlelength=1.4); S.panel_letter(b, "b")
 
     # d — operating points vs horizon at spec>=0.90
     d = axs["d"]
@@ -431,18 +433,19 @@ def figure4(tag):
         vals = [hyp["per_horizon"][S.hkey(h)]["M1"]["operating_points"]["spec90"][metric] for h in hs]
         d.plot(hs, vals, "-", color=col, marker=mk, ms=3, label=metric.upper())
     S.finish(d, "forecast horizon (min)", "value at spec ≥ 0.90", "Operating characteristics")
-    d.set_xticks(hs); d.set_ylim(0, 1); d.legend(loc="center left", fontsize=5.5, ncol=2); S.panel_letter(d, "d")
+    d.set_xticks(hs); d.set_ylim(-0.02, 1.02); d.set_box_aspect(1)
+    d.legend(loc="lower left", fontsize=5.0, ncol=2, columnspacing=1.0, handlelength=1.4); S.panel_letter(d, "d")
 
     # c — subgroup forest (tall panel)
     _forest(axs["c"], sg)
-    S.panel_letter(axs["c"], "c", dx=-0.02)
+    S.panel_letter(axs["c"], "c", dx=0.02, dy=1.04)
 
-    fig.suptitle("Clinical translation and robustness of the hypotension early-warning signal",
-                 y=0.995, fontsize=9, fontweight="bold")
     S.save_fig(fig, "Fig4_clinical_robustness")
 
 
 def _forest(ax, sg):
+    """Forest with all text on the RIGHT (outer figure margin) so nothing spills into
+    the neighbouring panels on the left."""
     subs = sg["subgroups"]; overall = sg["overall"]
     rows = []
     last_var = None
@@ -454,22 +457,23 @@ def _forest(ax, sg):
     y = 0; yticks = []; ylabels = []
     for kind, lab, au, ci, n in rows:
         if kind == "header":
-            ax.text(-0.02, y, lab, fontsize=6.3, fontweight="bold", va="center",
+            ax.text(1.03, y, lab, fontsize=6.2, fontweight="bold", va="center", ha="left",
                     transform=ax.get_yaxis_transform())
             yticks.append(y); ylabels.append("")
         else:
             ax.errorbar(au, y, xerr=[[au-ci[0]], [ci[1]-au]], fmt="o", color=S.C["M1"],
                         ms=3.2, capsize=1.8, lw=1.0)
-            ax.text(1.005, y, f"{au:.3f}", va="center", fontsize=5.6, transform=ax.get_yaxis_transform())
-            yticks.append(y); ylabels.append(f"  {lab} (n={n})")
+            yticks.append(y); ylabels.append(f"{lab} (n={n})  {au:.3f}")
         y += 1
     ax.axvline(overall["auroc"], color=S.C["persist"], lw=0.9, ls="--")
     ax.text(overall["auroc"], -1.15, f"overall {overall['auroc']:.3f}", fontsize=5.6,
             color="#555", ha="center", va="top")
-    ax.set_yticks(yticks); ax.set_yticklabels(ylabels, fontsize=5.8)
-    ax.set_ylim(-1.4, y-0.4); ax.set_xlim(0.85, 1.0)
+    ax.set_yticks(yticks); ax.set_yticklabels(ylabels, fontsize=5.6)
+    ax.yaxis.tick_right()                             # tick labels on the right
+    ax.set_ylim(-1.4, y-0.4); ax.set_xlim(0.88, 0.96); ax.set_xticks([0.88, 0.90, 0.92, 0.94, 0.96])
     ax.set_xlabel("hypotension AUROC @5 min"); ax.set_title("Subgroup robustness", loc="center")
-    ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
+    ax.spines["left"].set_visible(False); ax.spines["right"].set_visible(True)
+    ax.tick_params(axis="y", length=0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -499,38 +503,50 @@ def _write_table(name, header, rows, caption):
     print(f"  wrote {S.TAB_DIR}/{name}.{{md,csv,tex}}", flush=True)
 
 
+def windows_caseids(tag):
+    """Case ids that contributed >=1 forecast window — the true cohort denominator."""
+    cids = set()
+    for r in csv.DictReader(open(f"results/ablation_windows_{tag}.csv")):
+        cids.add(str(r["caseid"]))
+    return cids
+
 def table1_cohort(tag):
-    rows = [r for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv")) if r["include"] in ("1","True","true")]
-    hyp = load_hypo(tag)
-    def num(col):
-        v = [float(r[col]) for r in rows if r.get(col) not in ("", None) and r[col].replace(".","",1).lstrip("-").isdigit()]
-        return np.array(v)
-    def age_parse(x):
-        try: return float(x)
-        except: return 90.0 if ">" in str(x) else np.nan
-    ages = np.array([age_parse(r["age"]) for r in rows]); ages = ages[~np.isnan(ages)]
-    dur = num("dur_min")
-    n = len(rows)
-    males = sum(1 for r in rows if r["sex"].upper().startswith("M"))
+    # Denominator = cases contributing >=1 window; demographics from authoritative clinical_data.csv
+    # (the manifest is incomplete). Normalise caseids to strip zero-padding across sources.
+    keep = {str(int(c)) for c in windows_caseids(tag)}
+    cd = {str(int(r["caseid"])): r for r in csv.DictReader(open("datasets/vitaldb/data/clinical_data.csv", encoding="utf-8-sig"))}
+    rows = [cd[c] for c in keep if c in cd]
+    hyp = load_hypo(tag); n = len(rows)
+    def fnum(r, k):
+        try: return float(r[k])
+        except (ValueError, TypeError, KeyError): return np.nan
+    ages = np.array([fnum(r, "age") for r in rows]); ages = ages[~np.isnan(ages)]
+    bmi = np.array([fnum(r, "bmi") for r in rows]); bmi = bmi[~np.isnan(bmi)]
+    dur = np.array([(fnum(r, "aneend") - fnum(r, "anestart"))/60 for r in rows]); dur = dur[np.isfinite(dur) & (dur > 0)]
+    males = sum(1 for r in rows if str(r.get("sex", "")).upper().startswith("M"))
     asa = {}
-    for r in rows: asa[r["asa"]] = asa.get(r["asa"], 0)+1
+    for r in rows: asa[str(r.get("asa", "")).strip()] = asa.get(str(r.get("asa", "")).strip(), 0) + 1
+    n_asa12 = asa.get("1", 0) + asa.get("2", 0)
     dept = {}
-    for r in rows: dept[r["department"]] = dept.get(r["department"], 0)+1
-    top_dept = sorted(dept.items(), key=lambda kv:-kv[1])[:3]
+    for r in rows:
+        d = str(r.get("department", "")).strip() or "—"; dept[d] = dept.get(d, 0) + 1
+    top_dept = sorted(dept.items(), key=lambda kv: -kv[1])[:3]
+    def iqr(a): return f"{np.median(a):.0f} ({np.percentile(a,25):.0f}–{np.percentile(a,75):.0f})"
     H_rows = [
         ("Cases, n", f"{n:,}"),
-        ("Age, y — median (IQR)", f"{np.median(ages):.0f} ({np.percentile(ages,25):.0f}–{np.percentile(ages,75):.0f})"),
+        ("Age, y — median (IQR)", iqr(ages)),
         ("Male sex, n (%)", f"{males:,} ({males/n*100:.0f}%)"),
-        ("Case duration, min — median (IQR)", f"{np.median(dur):.0f} ({np.percentile(dur,25):.0f}–{np.percentile(dur,75):.0f})"),
-        ("ASA I–II, n (%)", f"{asa.get('1',0)+asa.get('2',0):,} ({(asa.get('1',0)+asa.get('2',0))/n*100:.0f}%)"),
-        ("Top departments", "; ".join(f"{k} {v}" for k,v in top_dept)),
+        ("BMI, kg/m² — median (IQR)", f"{np.median(bmi):.1f} ({np.percentile(bmi,25):.1f}–{np.percentile(bmi,75):.1f})"),
+        ("Anesthesia duration, min — median (IQR)", iqr(dur)),
+        ("ASA I–II, n (%)", f"{n_asa12:,} ({n_asa12/n*100:.0f}%)"),
+        ("Top departments", "; ".join(f"{k} {v}" for k, v in top_dept)),
         ("Forecast windows, n", f"{load_primary(tag)['n_windows']:,}"),
     ]
-    for h in [1,5,10,15]:
+    for h in [1, 5, 10, 15]:
         p = hyp["per_horizon"][S.hkey(h)]
         H_rows.append((f"Hypotension prevalence @{h} min, %", f"{p['prevalence']*100:.1f}"))
     _write_table("Table1_cohort", ["Characteristic", "Value"], H_rows,
-                 f"Table 1. Cohort characteristics (anesthetic cohort, tag={tag}).")
+                 f"Table 1. Cohort characteristics — cases contributing ≥1 forecast window (n={n}, tag={tag}).")
 
 
 def table2_accuracy(tag):

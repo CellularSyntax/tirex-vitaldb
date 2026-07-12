@@ -92,13 +92,11 @@ def panel_letter(ax, letter: str, dx: float = -0.16, dy: float = 1.06):
             va="top", ha="right", family="sans-serif")
 
 
-def finish(ax, xlabel=None, ylabel=None, title=None, ygrid=True):
+def finish(ax, xlabel=None, ylabel=None, title=None, ygrid=False):
+    # Plain white background — no gridlines anywhere (paper house style).
     if xlabel: ax.set_xlabel(xlabel)
     if ylabel: ax.set_ylabel(ylabel)
     if title:  ax.set_title(title, loc="center")
-    if ygrid:
-        ax.grid(axis="y", color=C["grid"], linewidth=0.5, zorder=0)
-        ax.set_axisbelow(True)
     return ax
 
 
