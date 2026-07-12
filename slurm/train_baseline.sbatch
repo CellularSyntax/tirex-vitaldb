@@ -18,9 +18,18 @@
 # Select architecture / covariate / cohort at submit time:
 #   MODEL=tft       COV=ce      MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
 #   MODEL=patchtst  COV=ce      MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
-#   MODEL=tft       COV=rate    MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
 #   MODEL=tft       COV=pressor MATCH=results/ablation_windows_cases115_covpressor.csv \
 #       CONFIG=datasets/vitaldb/configs/data_pressor.yaml                            sbatch slurm/train_baseline.sbatch
+# 5-fold subject CV (out-of-fold over all cases):
+#   MODEL=tft FOLDS=5 MATCH=results/ablation_windows_all2873.csv                     sbatch slurm/train_baseline.sbatch
+# MOVER internal CV:
+#   MODEL=tft COV=mover_rate CONFIG=datasets/mover/configs/data.yaml FOLDS=5 \
+#       MATCH=results/ablation_windows_mover_art.csv                                 sbatch slurm/train_baseline.sbatch
+# Cross-dataset transfer SOURCE (train on all, save checkpoint; no CSV/compare):
+#   MODEL=tft COV=rate CONFIG=datasets/vitaldb/configs/data_h60.yaml ALLTRAIN=1 \
+#       CKPT=results/baseline_ckpt_vitaldb60.pt                                       sbatch slurm/train_baseline.sbatch
+#   MODEL=tft COV=mover_rate CONFIG=datasets/mover/configs/data.yaml ALLTRAIN=1 \
+#       CKPT=results/baseline_ckpt_mover_art.pt                                       sbatch slurm/train_baseline.sbatch
 # compare.py (TiRex vs baseline classification head-to-head) auto-runs only for COV=ce.
 set -euo pipefail
 
@@ -28,6 +37,15 @@ MODEL="${MODEL:-tft}"
 COV="${COV:-ce}"
 CONFIG="${CONFIG:-datasets/vitaldb/configs/data.yaml}"
 MATCH="${MATCH:-results/ablation_windows_all2873.csv}"
+FOLDS="${FOLDS:-1}"                 # >1 -> K-fold subject CV (out-of-fold over all cases)
+ALLTRAIN="${ALLTRAIN:-0}"           # 1 -> train on all cases, save CKPT for cross_eval.py (no CSV)
+CKPT="${CKPT:-}"
+# cohort selection + mode: all-train uses the full manifest cohort; else lock to the matched windows.
+if [ "${ALLTRAIN}" = "1" ]; then
+  MODE_ARGS="--all --all-train"; [ -n "${CKPT}" ] && MODE_ARGS="${MODE_ARGS} --save-ckpt ${CKPT}"
+else
+  MODE_ARGS="--match-tirex ${MATCH} --folds ${FOLDS}"
+fi
 if [ -z "${SLURM_JOB_ID:-}" ]; then
   echo "ERROR: submit this with 'sbatch slurm/train_baseline.sbatch' (not 'bash')." >&2; exit 1
 fi
@@ -38,7 +56,8 @@ CONTAINER_IMAGE="${CONTAINER_IMAGE:-$( [ -f "$DEFAULT_SQSH" ] && echo "$DEFAULT_
 mkdir -p "${PROJECT_ROOT}/logs" "${PROJECT_ROOT}/results"
 export SLURM_STEP_LAUNCH_TIMEOUT=600
 echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"
-echo "MODEL=${MODEL} COV=${COV} CONFIG=${CONFIG} MATCH=${MATCH}"
+echo "MODEL=${MODEL} COV=${COV} CONFIG=${CONFIG} FOLDS=${FOLDS} ALLTRAIN=${ALLTRAIN}"
+echo "MODE_ARGS=${MODE_ARGS}"
 
 srun \
   --container-image="${CONTAINER_IMAGE}" \
@@ -49,12 +68,13 @@ set -euo pipefail
 export PROJECT_ROOT='${PROJECT_ROOT}'
 source '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
-echo '[job] training baseline ${MODEL} cov=${COV} matched to ${MATCH}'
+echo '[job] training baseline ${MODEL} cov=${COV} (${MODE_ARGS})'
 PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/train.py \
-    --config ${CONFIG} --model ${MODEL} --cov ${COV} \
-    --match-tirex ${MATCH} --device cuda --batch-size 512 --epochs 60
+    --config ${CONFIG} --model ${MODEL} --cov ${COV} ${MODE_ARGS} \
+    --device cuda --batch-size 512 --epochs 60
 STEM=\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
-if [ '${COV}' = 'ce' ]; then
+# compare.py auto-runs only for the VitalDB CE head-to-head (single split); skip for CV/all-train/MOVER.
+if [ '${COV}' = 'ce' ] && [ '${ALLTRAIN}' != '1' ] && [ '${FOLDS}' = '1' ]; then
   echo '[job] matched classification comparison (TiRex vs ${MODEL})'
   PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/compare.py \
       --tirex \${STEM} --baseline baseline-${MODEL}_\${STEM}
