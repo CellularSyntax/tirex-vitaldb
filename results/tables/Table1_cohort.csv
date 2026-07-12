@@ -1,0 +1,12 @@
+Characteristic,Value
+"Cases, n","2,659"
+"Age, y — median (IQR)",61 (52–70)
+"Male sex, n (%)","1,523 (57%)"
+"Case duration, min — median (IQR)",223 (165–299)
+"ASA I–II, n (%)","2,216 (83%)"
+Top departments,General surgery 1653; Thoracic surgery 837; Gynecology 97
+"Forecast windows, n","47,642"
+"Hypotension prevalence @1 min, %",5.4
+"Hypotension prevalence @5 min, %",10.6
+"Hypotension prevalence @10 min, %",15.0
+"Hypotension prevalence @15 min, %",18.4

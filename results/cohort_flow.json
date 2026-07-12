@@ -1,15 +1,14 @@
 {
-  "n_local_scanned": 5406,
+  "n_local_scanned": 6388,
   "excluded": {
-    "no_ART_MBP": 2142,
-    "no_remifentanil": 515,
-    "short_duration": 12,
+    "no_ART_MBP": 2861,
+    "no_remifentanil": 589,
+    "short_duration": 23,
+    "low_remi_coverage": 23,
     "low_target_coverage": 17,
-    "low_remi_coverage": 20,
-    "unreadable_header": 39,
     "remi_inactive": 2
   },
-  "included_N": 2659,
+  "included_N": 2873,
   "thresholds": {
     "MIN_DUR_MIN": 60.0,
     "MIN_TARGET_COV": 0.6,
