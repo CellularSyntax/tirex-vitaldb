@@ -92,6 +92,34 @@ def _tft_xpct_t7(base_tag):
     return _tft_covariate_xpct(rows, c2s, tsub, ["transition"], [7])["transition"][0]
 
 
+def _baseline_xpct_ci(base_tag, stratum="transition", h=7, n_boot=1000, seed=0):
+    """Trained-baseline covariate benefit X% = (CRPS_M0−CRPS_M1)/CRPS_M0×100 with a case-clustered
+    bootstrap 95% CI (same method as the TiRex primary). Returns (x, lo, hi) or None if absent."""
+    import glob
+    if not glob.glob(f"results/ablation_windows_{base_tag}.csv"):
+        return None
+    rows, _ = H.load_rows(base_tag)
+    by_case = {}
+    for r in rows:
+        if int(r["h_min"]) != h or (stratum != "all" and r["stratum"] != stratum):
+            continue
+        v1, v0 = r.get("crps_M1"), r.get("crps_M0")
+        if v1 in ("", "nan", None) or v0 in ("", "nan", None):
+            continue
+        by_case.setdefault(str(r["caseid"]), []).append((float(v1), float(v0)))
+    cids = list(by_case)
+    if len(cids) < 3:
+        return None
+    c1 = np.array([np.mean([p[0] for p in by_case[c]]) for c in cids])
+    c0 = np.array([np.mean([p[1] for p in by_case[c]]) for c in cids])
+    pt = (c0.mean() - c1.mean()) / c0.mean() * 100
+    rng = np.random.default_rng(seed); k = len(cids); b = []
+    for _ in range(n_boot):
+        s = rng.integers(0, k, k)
+        b.append((c0[s].mean() - c1[s].mean()) / c0[s].mean() * 100)
+    return float(pt), float(np.percentile(b, 2.5)), float(np.percentile(b, 97.5))
+
+
 def _mean_metric_by_h(rows, c2s, test_subjects, metric, hs):
     """Mean of a per-window metric (e.g. mae_M1, crps_M1) per horizon, on canonical test windows."""
     per = {h: [] for h in hs}
@@ -252,30 +280,35 @@ def _example_panel(ax, ex, i, title):
 # ══════════════════════════════════════════════════════════════════════════════
 def figure2(tag):
     prim = load_primary(tag)
-    # themed 2-row layout: top = accuracy (a, d), bottom = value of the drug covariate (b, c, e)
-    fig, axs = plt.subplot_mosaic([["a", "a", "a", "d", "d", "d"],
-                                   ["b", "b", "c", "c", "e", "e"]],
-                                  figsize=(S.W2, S.W2*0.64),
-                                  gridspec_kw=dict(hspace=0.52, wspace=1.05))
-
-    # a — forecast accuracy head-to-head: zero-shot TiRex vs trained TFT (matched test, MAE)
     hs = MAIN_H
     c2s = H.caseid_to_subject()
-    trows, _ = H.load_rows(tag); brows, _ = H.load_rows(f"baseline-tft_{tag}")
-    tsub = canonical_test_subjects(trows, c2s)
-    mae_tx = _mean_metric_by_h(trows, c2s, tsub, "mae_M1", hs)
-    mae_tf = _mean_metric_by_h(brows, c2s, tsub, "mae_M1", hs)
+    trows, _ = H.load_rows(tag); tsub = canonical_test_subjects(trows, c2s)
+    bl = available_baselines(tag)          # trained comparators on the CE cohort (TFT[, PatchTST])
+
+    # landscape layout: top row = accuracy (a, d); bottom row = value of the drug covariate (b, c, e)
+    fig, axs = plt.subplot_mosaic([["a", "a", "a", "d", "d", "d"],
+                                   ["b", "b", "c", "c", "e", "e"]],
+                                  figsize=(S.W2 * 1.34, S.W2 * 0.64),
+                                  gridspec_kw=dict(hspace=0.5, wspace=1.0,
+                                                   left=0.06, right=0.985, top=0.92, bottom=0.11))
+
+    # a — forecast accuracy (MAE vs horizon): zero-shot TiRex vs every trained baseline (matched test)
     a = axs["a"]
-    a.plot(hs, mae_tx, "-o", color=S.C["M1"], lw=2.0, label="TiRex-2 (zero-shot)")
-    a.plot(hs, mae_tf, "--s", color=TFT_COL, ms=3.5, label="TFT (trained)")
+    a.plot(hs, _mean_metric_by_h(trows, c2s, tsub, "mae_M1", hs), "-o", color=S.C["M1"], lw=2.2, ms=4.5,
+           label="TiRex-2 (zero-shot)", zorder=6)
+    for bb in bl:
+        br, _ = H.load_rows(bb["tag"])
+        a.plot(hs, _mean_metric_by_h(br, c2s, tsub, "mae_M1", hs), bb["ls"], marker=bb["mk"],
+               color=bb["col"], ms=3.5, label=f"{bb['disp']} (trained)")
     y7 = strat(prim, 7, "all")["Y_pct_vs_persistence"]
-    a.text(0.27, 0.05, f"both beat persistence (−{y7:.0f}% CRPS)", transform=a.transAxes, fontsize=6, color="#555")
+    a.text(0.5, 0.05, f"all beat persistence (−{y7:.0f}% CRPS)", transform=a.transAxes,
+           fontsize=6, color="#555", ha="center")
     S.finish(a, "forecast horizon (min)", "MAE (mmHg)", "Forecast accuracy: zero-shot vs trained")
     a.set_xticks(hs); a.legend(loc="upper left"); S.panel_letter(a, "a")
 
-    # b — covariate benefit X% vs horizon, by stratum: TiRex (solid+CI) and TFT (dashed)
+    # b — TiRex-2 covariate benefit by window type (characterization of the deployed model;
+    # the cross-model comparison of covariate value lives in panels c and e).
     b = axs["b"]
-    tftx = _tft_covariate_xpct(brows, c2s, tsub, ["all", "transition", "steady"], hs)
     for s_name, col, mk in [("all", S.C["M1"], "o"), ("transition", S.C["transition"], "^"),
                             ("steady", S.C["steady"], "v")]:
         xs = [strat(prim, h, s_name)["X_pct_withpast"] for h in hs]
@@ -283,64 +316,66 @@ def figure2(tag):
         hi = [strat(prim, h, s_name)["X_pct_withpast_CI95"][1] for h in hs]
         b.plot(hs, xs, "-", color=col, marker=mk, label=s_name)
         b.fill_between(hs, lo, hi, color=col, alpha=0.15, lw=0)
-        b.plot(hs, tftx[s_name], "--", color=col, lw=1.0)            # TFT, same stratum colour
-    b.plot([], [], "-", color="#555", label="TiRex-2 (solid)")
-    b.plot([], [], "--", color="#555", label="TFT (dashed)")
     b.axhline(0, color="#999", lw=0.7, ls="--")
-    S.finish(b, "forecast horizon (min)", "CRPS reduction M0→M1 (%)", "Value of the drug covariate")
-    b.set_xticks(hs); b.legend(loc="upper left", fontsize=5.2, ncol=2, columnspacing=1.0); S.panel_letter(b, "b")
+    S.finish(b, "forecast horizon (min)", "CRPS reduction M0→M1 (%)", "TiRex-2: value by window type")
+    b.set_xticks(hs); b.legend(loc="upper left", fontsize=5.6, title="window"); S.panel_letter(b, "b")
 
-    # c — covariate representation: CE vs RATE vs pressor (transition, 7 min) forest
+    # c — which drug covariate, and which model exploits it: grouped forest, points + case-clustered
+    # 95% CIs (all models on one linear axis — the effect can be ≤0 for phenylephrine, which log can't
+    # show). Each trained baseline is drawn per cohort where it exists (auto-fills once trained).
     c = axs["c"]
-    arms = [("CE (effect-site)", tag, S.C["M1"]),
-            ("RATE (infusion)", RATE_TAG, S.C["rate"]),
-            ("Phenylephrine", PRESSOR_TAG, S.C["pressor"])]
-    ypos = list(range(len(arms)))[::-1]
-    STATX = 8.15                                       # dedicated stats column, clear of the whiskers
-    # TiRex plotted as a forest (small ~1% effects); the trained TFT extracts far more (~9%),
-    # off this x-scale, so its value is reported as text in the stats column (numeric parity).
-    for yp, (lab, t, col) in zip(ypos, arms):
-        p = load_primary(t); blk = strat(p, 7, "transition")
+    arms = [("CE (effect-site)", tag, 2), ("RATE (infusion)", RATE_TAG, 1), ("Phenylephrine", PRESSOR_TAG, 0)]
+    offs = np.linspace(0.26, -0.26, 1 + len(MATCHED_BASELINES))
+    seen = set()
+    for lab, t, yb in arms:
+        blk = strat(load_primary(t), 7, "transition")
         x = blk["X_pct_withpast"]; ci = blk["X_pct_withpast_CI95"]
-        tftv = _tft_xpct_t7(f"baseline-tft_{t}")        # TFT arm, if trained
-        c.errorbar(x, yp, xerr=[[x-ci[0]], [ci[1]-x]], fmt="o", color=col, capsize=2.5, lw=1.2)
-        if tftv is None:
-            c.text(STATX, yp, f"TiRex {x:+.2f}% [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.4)
-        else:
-            c.text(STATX, yp + 0.16, f"TiRex {x:+.2f}% [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.0)
-            c.text(STATX, yp - 0.16, f"TFT (trained) {tftv:+.2f}%", ha="right", va="center", fontsize=5.0, color="#555")
-    c.text(STATX, len(arms) - 0.32, "transition @7 min", ha="right", va="center", fontsize=5.4, color="#555", style="italic")
+        c.errorbar(x, yb + offs[0], xerr=[[x - ci[0]], [ci[1] - x]], fmt="o", color=S.C["M1"],
+                   capsize=2, lw=1.1, ms=4, zorder=6)
+        for j, m in enumerate(MATCHED_BASELINES, start=1):
+            r = _baseline_xpct_ci(f"baseline-{m['key']}_{t}", "transition", 7)
+            if r is None:
+                continue
+            xv, lo, hi = r
+            c.errorbar(xv, yb + offs[j], xerr=[[xv - lo], [hi - xv]], fmt=m["mk"], color=m["col"],
+                       capsize=2, lw=1.1, ms=4)
+            seen.add(m["disp"])
     c.axvline(0, color="#999", lw=0.7, ls="--")
-    c.set_yticks(ypos); c.set_yticklabels([a[0] for a in arms])
-    c.set_xlabel("CRPS reduction in transition windows @7 min (%)")
-    c.set_title("Which covariate helps?", loc="center")
-    c.set_xlim(-4.2, 8.3); c.set_xticks([-4, -2, 0, 2, 4])
-    c.set_ylim(-0.5, len(arms)-0.15); S.panel_letter(c, "c")
+    c.set_yticks([ar[2] for ar in arms]); c.set_yticklabels([ar[0] for ar in arms])
+    c.set_ylim(-0.5, 2.5)
+    c.set_xlabel("CRPS reduction, transition @7 min (%)")
+    c.set_title("Which covariate, which model?", loc="center")
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], color=S.C["M1"], marker="o", ls="none", label="TiRex-2 (zero-shot)")]
+    handles += [Line2D([], [], color=m["col"], marker=m["mk"], ls="none", label=f"{m['disp']} (trained)")
+                for m in MATCHED_BASELINES if m["disp"] in seen]
+    c.legend(handles=handles, loc="lower right", fontsize=5.0); S.panel_letter(c, "c")
 
-    # d — instantaneous MAE vs Kapral (external / internal)
+    # d — instantaneous MAE vs Kapral (external / internal), TiRex vs trained baselines
     d = axs["d"]
     _kapral_panel(d, tag)
     S.panel_letter(d, "d")
 
-    # e — who can use the drug plan? covariate CRPS reduction by model class (transition, 7 min).
-    # Turns the modest ~1% into a *capability* story: only covariate-aware models benefit at all;
-    # the other zero-shot TSFMs are univariate (0% by construction); training amplifies the effect.
+    # e — who can use the drug plan? covariate CRPS reduction by model class (CE, transition @7 min),
+    # with case-clustered 95% CIs. Only covariate-aware models benefit; other zero-shot TSFMs are 0.
     e = axs["e"]
-    tb = strat(prim, 7, "transition"); tx = tb["X_pct_withpast"]; tci = tb["X_pct_withpast_CI95"]
-    bars = [("Other zero-shot\nTSFMs", 0.0, None, "#9AA0A6"),          # Chronos/TimesFM/Moirai: univariate
-            ("TiRex-2\n(zero-shot)", tx, tci, S.C["M1"])]
-    for key, disp, col in [("tft", "TFT\n(trained)", TFT_COL), ("patchtst", "PatchTST\n(trained)", PATCH_COL)]:
-        v = _tft_xpct_t7(f"baseline-{key}_{tag}")
-        if v is not None:
-            bars.append((disp, v, None, col))
+    tb = strat(prim, 7, "transition")
+    bars = [("Other zero-shot\nTSFMs", 0.0, None, "#9AA0A6"),
+            ("TiRex-2\n(zero-shot)", tb["X_pct_withpast"], tb["X_pct_withpast_CI95"], S.C["M1"])]
+    for m in MATCHED_BASELINES:
+        r = _baseline_xpct_ci(f"baseline-{m['key']}_{tag}", "transition", 7)
+        if r is not None:
+            bars.append((f"{m['disp']}\n(trained)", r[0], [r[1], r[2]], m["col"]))
     xpos = np.arange(len(bars))
     for xi, (lab, v, ci, col) in zip(xpos, bars):
         e.bar(xi, v, width=0.66, color=col, edgecolor="white", lw=0.5)
+        top = v
         if ci is not None:
             e.errorbar(xi, v, yerr=[[v - ci[0]], [ci[1] - v]], fmt="none", ecolor="#333", capsize=2.5, lw=1.0)
-        e.text(xi, v + 0.18, "0" if v == 0 else f"{v:+.1f}%", ha="center", va="bottom", fontsize=5.4)
+            top = ci[1]
+        e.text(xi, top + 0.3, "0" if v == 0 else f"{v:+.1f}%", ha="center", va="bottom", fontsize=5.2)
     e.axhline(0, color="#999", lw=0.7)
-    e.set_ylim(top=max(v for _, v, _, _ in bars) * 1.3 + 0.6)
+    e.set_ylim(top=max((ci[1] if ci else v) for _, v, ci, _ in bars) * 1.18 + 1.0)
     e.set_xticks(xpos); e.set_xticklabels([b[0] for b in bars], fontsize=5.0)
     S.finish(e, None, "CRPS reduction from\ndrug covariate (%)", "Who can use the drug plan?")
     S.panel_letter(e, "e")
@@ -348,13 +383,12 @@ def figure2(tag):
 
 
 def _kapral_panel(ax, tag):
-    # our instantaneous endpoint MAE on the matched test split (both our models)
+    # our instantaneous endpoint MAE on the matched test split (TiRex + every trained baseline)
     c2s = H.caseid_to_subject()
-    rows, _ = H.load_rows(tag); brows, _ = H.load_rows(f"baseline-tft_{tag}")
+    rows, _ = H.load_rows(tag)
     tsub = canonical_test_subjects(rows, c2s)
     hs = MAIN_H
     our = _mean_metric_by_h(rows, c2s, tsub, "mae_inst_M1", hs)
-    tft = _mean_metric_by_h(brows, c2s, tsub, "mae_inst_M1", hs)
     # Kapral digitized curves (instantaneous)
     K = {}
     for r in csv.DictReader(open("results/kapral_mae_curves.csv")):
@@ -372,7 +406,10 @@ def _kapral_panel(ax, tag):
             if xl.size and xu.size:
                 yl_i = np.interp(xm, xl, yl); yu_i = np.interp(xm, xu, yu)
                 ax.fill_between(xm, yl_i, yu_i, color=col, alpha=0.10, lw=0)
-    ax.plot(hs, tft, "--s", color=TFT_COL, lw=1.6, ms=4, zorder=5, label="TFT (trained, ours)")
+    for bb in available_baselines(tag):
+        br, _ = H.load_rows(bb["tag"])
+        ax.plot(hs, _mean_metric_by_h(br, c2s, tsub, "mae_inst_M1", hs), bb["ls"], marker=bb["mk"],
+                color=bb["col"], lw=1.6, ms=4, zorder=5, label=f"{bb['disp']} (trained, ours)")
     ax.plot(hs, our, "-o", color=S.C["M1"], lw=2.4, ms=6, mec="white", mew=1.0,
             zorder=6, label="TiRex-2 (zero-shot, ours)")
     ax.set_xlim(0, 7.4); ax.set_ylim(0, None)
