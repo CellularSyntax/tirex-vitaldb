@@ -203,7 +203,7 @@ def figure2(tag):
     a.plot(hs, mae1, "-o", color=S.C["M1"], label="M1 (+ drug covariate)")
     a.plot(hs, mae0, "-s", color=S.C["M0"], label="M0 (target only)")
     y7 = strat(prim, 7, "all")["Y_pct_vs_persistence"]
-    a.text(0.03, 0.06, f"vs persistence: −{y7:.0f}% CRPS", transform=a.transAxes, fontsize=6, color="#555")
+    a.text(0.34, 0.05, f"vs persistence: −{y7:.0f}% CRPS", transform=a.transAxes, fontsize=6, color="#555")
     S.finish(a, "forecast horizon (min)", "MAE (mmHg)", "Forecast accuracy")
     a.set_xticks(hs); a.legend(loc="upper left"); S.panel_letter(a, "a")
 
