@@ -94,12 +94,11 @@ def load_rows(tag):
 
 
 def norm_caseid(c):
-    """VitalDB ids are integers (strip zero padding); MOVER ids are hex hashes (verbatim)."""
+    """VitalDB ids are plain integers (strip zero padding); MOVER ids are hex hashes (verbatim).
+    Only pure-digit strings are treated as integers -- float() accepts hex like '1e5'/'inf'."""
     s = str(c).strip()
-    try:
-        return str(int(float(s)))
-    except ValueError:
-        return s
+    d = s[1:] if s[:1] in "+-" else s
+    return str(int(s)) if d.isdigit() else s
 
 
 def caseid_to_subject(clinical):
@@ -120,7 +119,11 @@ def dev_subjects(caseids, c2s, dev_frac=0.2, seed=0):
 
 
 def load_case_target(cache_dir, cid):
-    for name in (f"{int(cid):04d}.npz", f"{int(cid)}.npz", f"{cid}.npz"):
+    s = str(cid).strip()
+    names = [f"{s}.npz", f"{norm_caseid(s)}.npz"]
+    if s.isdigit():                       # VitalDB: cache files are zero-padded integers
+        names += [f"{int(s):04d}.npz", f"{int(s)}.npz"]
+    for name in dict.fromkeys(names):     # dedupe, preserve order
         p = os.path.join(cache_dir, name)
         if os.path.exists(p):
             z = np.load(p, allow_pickle=True)

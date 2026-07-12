@@ -31,13 +31,12 @@ def fnum(r, k):
 
 
 def norm_caseid(c):
-    """Normalise a caseid for cross-file joins. VitalDB ids are integers (strip zero
-    padding via int); MOVER ids are hex hash strings (keep verbatim)."""
+    """Normalise a caseid for cross-file joins. VitalDB ids are plain integers (strip zero
+    padding); MOVER ids are hex hash strings (keep verbatim). Only pure-digit strings are
+    treated as integers -- float() is too permissive (accepts hex like '1e5' or 'inf')."""
     s = str(c).strip()
-    try:
-        return str(int(float(s)))
-    except ValueError:
-        return s
+    d = s[1:] if s[:1] in "+-" else s
+    return str(int(s)) if d.isdigit() else s
 
 
 def windows_caseids(path):
