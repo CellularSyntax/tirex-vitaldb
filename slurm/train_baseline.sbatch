@@ -15,11 +15,18 @@
 # zero-shot TiRex-2 run, then score both on the identical held-out test subjects.
 # Reuses the tirex2 container (pure-PyTorch model, no extra deps) and the built caches.
 #
-# Select architecture + cohort at submit time:
-#   MODEL=tft  MATCH=results/ablation_windows_all2873.csv  sbatch slurm/train_baseline.sbatch
+# Select architecture / covariate / cohort at submit time:
+#   MODEL=tft       COV=ce      MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
+#   MODEL=patchtst  COV=ce      MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
+#   MODEL=tft       COV=rate    MATCH=results/ablation_windows_all2873.csv          sbatch slurm/train_baseline.sbatch
+#   MODEL=tft       COV=pressor MATCH=results/ablation_windows_cases115_covpressor.csv \
+#       CONFIG=datasets/vitaldb/configs/data_pressor.yaml                            sbatch slurm/train_baseline.sbatch
+# compare.py (TiRex vs baseline classification head-to-head) auto-runs only for COV=ce.
 set -euo pipefail
 
 MODEL="${MODEL:-tft}"
+COV="${COV:-ce}"
+CONFIG="${CONFIG:-datasets/vitaldb/configs/data.yaml}"
 MATCH="${MATCH:-results/ablation_windows_all2873.csv}"
 if [ -z "${SLURM_JOB_ID:-}" ]; then
   echo "ERROR: submit this with 'sbatch slurm/train_baseline.sbatch' (not 'bash')." >&2; exit 1
@@ -30,7 +37,8 @@ DEFAULT_SQSH="${HOME}/containers/tirex2.sqsh"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-$( [ -f "$DEFAULT_SQSH" ] && echo "$DEFAULT_SQSH" || echo "nvcr.io#nvidia/pytorch:25.09-py3" )}"
 mkdir -p "${PROJECT_ROOT}/logs" "${PROJECT_ROOT}/results"
 export SLURM_STEP_LAUNCH_TIMEOUT=600
-echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"; echo "MODEL=${MODEL} MATCH=${MATCH}"
+echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"
+echo "MODEL=${MODEL} COV=${COV} CONFIG=${CONFIG} MATCH=${MATCH}"
 
 srun \
   --container-image="${CONTAINER_IMAGE}" \
@@ -41,14 +49,15 @@ set -euo pipefail
 export PROJECT_ROOT='${PROJECT_ROOT}'
 source '${PROJECT_ROOT}/slurm/setup_env.sh'
 cd '${PROJECT_ROOT}'
-echo '[job] training baseline ${MODEL} matched to ${MATCH}'
+echo '[job] training baseline ${MODEL} cov=${COV} matched to ${MATCH}'
 PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/train.py \
-    --config datasets/vitaldb/configs/data.yaml --model ${MODEL} \
+    --config ${CONFIG} --model ${MODEL} --cov ${COV} \
     --match-tirex ${MATCH} --device cuda --batch-size 512 --epochs 60
-BASE_TAG=baseline-${MODEL}_\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
-TIREX_TAG=\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
-echo '[job] matched comparison'
-PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/compare.py \
-    --tirex \${TIREX_TAG} --baseline \${BASE_TAG}
+STEM=\$(basename ${MATCH} | sed 's/ablation_windows_//;s/.csv//')
+if [ '${COV}' = 'ce' ]; then
+  echo '[job] matched classification comparison (TiRex vs ${MODEL})'
+  PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/compare.py \
+      --tirex \${STEM} --baseline baseline-${MODEL}_\${STEM}
+fi
 echo '[job] Done.'
 "

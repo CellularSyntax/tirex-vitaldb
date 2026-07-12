@@ -58,7 +58,7 @@ class VariableSelection(nn.Module):
 
 
 class TFT(nn.Module):
-    def __init__(self, n_past, n_fut, horizon, d=64, n_heads=4, dropout=0.1, n_quantiles=9):
+    def __init__(self, n_past, n_fut, horizon, context_len=None, d=64, n_heads=4, dropout=0.1, n_quantiles=9):
         super().__init__()
         self.H = horizon
         self.vsn_past = VariableSelection(n_past, d, dropout)
@@ -89,10 +89,53 @@ class TFT(nn.Module):
         return self.head(dec)                                     # [B,H,Q]
 
 
-MODELS = {"tft": TFT}
+class PatchTST(nn.Module):
+    """Patch time-series Transformer (Nie et al., ICLR 2023), covariate-aware.
+
+    Every channel — target MAP, past covariates, and the known future drug covariates —
+    is laid out over the full context+horizon span (past channels zero-padded in the horizon,
+    future covariates carrying their known values throughout), split into overlapping patches,
+    patch-embedded and passed through a shared Transformer encoder; a joint head over all
+    channels' patch tokens emits the target's horizon quantiles (so the future covariate can
+    inform the forecast). M0 zeroes the future covariate channels upstream.
+    """
+    def __init__(self, n_past, n_fut, horizon, context_len, d=96, n_heads=4, depth=3,
+                 patch_len=16, stride=8, dropout=0.1, n_quantiles=9):
+        super().__init__()
+        import math
+        self.H = horizon; self.pl = patch_len; self.sl = stride
+        self.n_past = n_past; self.n_fut = n_fut; self.C = n_past + n_fut
+        self.n_quantiles = n_quantiles
+        L = context_len + horizon
+        self.n_patch = math.ceil((L - patch_len) / stride) + 1
+        self.L_pad = patch_len + stride * (self.n_patch - 1)
+        self.embed = nn.Linear(patch_len, d)
+        self.pos = nn.Parameter(torch.zeros(1, 1, self.n_patch, d))
+        enc = nn.TransformerEncoderLayer(d, n_heads, dim_feedforward=d * 2, dropout=dropout,
+                                         batch_first=True, activation="gelu")
+        self.encoder = nn.TransformerEncoder(enc, depth)
+        self.norm = nn.LayerNorm(d)
+        self.drop = nn.Dropout(dropout)
+        self.head = nn.Linear(self.C * self.n_patch * d, horizon * n_quantiles)
+    def forward(self, past, future):            # past [B,Lc,n_past], future [B,Lc+H,n_fut]
+        B, Lc, _ = past.shape
+        past_ch = torch.zeros(B, self.n_past, Lc + self.H, device=past.device, dtype=past.dtype)
+        past_ch[:, :, :Lc] = past.transpose(1, 2)             # past channels known only in context
+        x = torch.cat([past_ch, future.transpose(1, 2)], dim=1)   # [B, C, Lc+H]
+        if self.L_pad > x.shape[2]:
+            x = torch.nn.functional.pad(x, (0, self.L_pad - x.shape[2]))
+        x = x.unfold(dimension=2, size=self.pl, step=self.sl)     # [B, C, n_patch, pl]
+        x = self.embed(x) + self.pos                              # [B, C, n_patch, d]
+        x = x.reshape(B * self.C, self.n_patch, -1)
+        x = self.norm(self.encoder(x)).reshape(B, -1)             # joint over channels+patches
+        q = self.head(self.drop(x))
+        return q.reshape(B, self.H, self.n_quantiles)
 
 
-def build_model(name, n_past, n_fut, horizon, **kw):
+MODELS = {"tft": TFT, "patchtst": PatchTST}
+
+
+def build_model(name, n_past, n_fut, horizon, context_len=None, **kw):
     if name not in MODELS:
         raise ValueError(f"unknown model '{name}'; have {list(MODELS)}")
-    return MODELS[name](n_past=n_past, n_fut=n_fut, horizon=horizon, **kw)
+    return MODELS[name](n_past=n_past, n_fut=n_fut, horizon=horizon, context_len=context_len, **kw)

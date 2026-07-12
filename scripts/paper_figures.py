@@ -53,6 +53,44 @@ def _test_scores(rows, c2s, dev, h, risk_col="risk_M1", ev_col="hypo_event"):
     return np.array(y), np.array(s)
 
 
+def _tft_covariate_xpct(brows, c2s, test_subjects, strata, hs):
+    """TFT covariate benefit X% = (CRPS_M0 − CRPS_M1)/CRPS_M0 × 100, by stratum, on test windows."""
+    out = {}
+    for st in strata:
+        xs = []
+        for h in hs:
+            m1, m0 = [], []
+            for r in brows:
+                if int(r["h_min"]) != h:
+                    continue
+                if st != "all" and r["stratum"] != st:
+                    continue
+                cid = str(r["caseid"])
+                if c2s.get(cid, cid) not in test_subjects:
+                    continue
+                v1, v0 = r.get("crps_M1"), r.get("crps_M0")
+                if v1 in ("", "nan", None) or v0 in ("", "nan", None):
+                    continue
+                m1.append(float(v1)); m0.append(float(v0))
+            if m1:
+                c1, c0 = np.mean(m1), np.mean(m0); xs.append((c0 - c1) / c0 * 100)
+            else:
+                xs.append(np.nan)
+        out[st] = xs
+    return out
+
+
+def _tft_xpct_t7(base_tag):
+    """TFT covariate X% in transition windows @7 min, or None if that baseline isn't trained yet."""
+    import glob
+    if not glob.glob(f"results/ablation_windows_{base_tag}.csv") and \
+       not glob.glob(f"results/ablation_windows_{base_tag}_sh*of*.csv"):
+        return None
+    rows, _ = H.load_rows(base_tag); c2s = H.caseid_to_subject()
+    tsub = {c2s.get(str(r["caseid"]), str(r["caseid"])) for r in rows}   # baseline CSV is test-only
+    return _tft_covariate_xpct(rows, c2s, tsub, ["transition"], [7])["transition"][0]
+
+
 def _mean_metric_by_h(rows, c2s, test_subjects, metric, hs):
     """Mean of a per-window metric (e.g. mae_M1, crps_M1) per horizon, on canonical test windows."""
     per = {h: [] for h in hs}
@@ -231,8 +269,9 @@ def figure2(tag):
     S.finish(a, "forecast horizon (min)", "MAE (mmHg)", "Forecast accuracy: zero-shot vs trained")
     a.set_xticks(hs); a.legend(loc="upper left"); S.panel_letter(a, "a")
 
-    # b — covariate benefit X% vs horizon, by stratum
+    # b — covariate benefit X% vs horizon, by stratum: TiRex (solid+CI) and TFT (dashed)
     b = axs["b"]
+    tftx = _tft_covariate_xpct(brows, c2s, tsub, ["all", "transition", "steady"], hs)
     for s_name, col, mk in [("all", S.C["M1"], "o"), ("transition", S.C["transition"], "^"),
                             ("steady", S.C["steady"], "v")]:
         xs = [strat(prim, h, s_name)["X_pct_withpast"] for h in hs]
@@ -240,9 +279,12 @@ def figure2(tag):
         hi = [strat(prim, h, s_name)["X_pct_withpast_CI95"][1] for h in hs]
         b.plot(hs, xs, "-", color=col, marker=mk, label=s_name)
         b.fill_between(hs, lo, hi, color=col, alpha=0.15, lw=0)
+        b.plot(hs, tftx[s_name], "--", color=col, lw=1.0)            # TFT, same stratum colour
+    b.plot([], [], "-", color="#555", label="TiRex-2 (solid)")
+    b.plot([], [], "--", color="#555", label="TFT (dashed)")
     b.axhline(0, color="#999", lw=0.7, ls="--")
     S.finish(b, "forecast horizon (min)", "CRPS reduction M0→M1 (%)", "Value of the drug covariate")
-    b.set_xticks(hs); b.legend(loc="upper left"); S.panel_letter(b, "b")
+    b.set_xticks(hs); b.legend(loc="upper left", fontsize=5.2, ncol=2, columnspacing=1.0); S.panel_letter(b, "b")
 
     # c — covariate representation: CE vs RATE vs pressor (transition, 7 min) forest
     c = axs["c"]
@@ -251,12 +293,19 @@ def figure2(tag):
             ("Phenylephrine", PRESSOR_TAG, S.C["pressor"])]
     ypos = list(range(len(arms)))[::-1]
     STATX = 8.15                                       # dedicated stats column, clear of the whiskers
+    # TiRex plotted as a forest (small ~1% effects); the trained TFT extracts far more (~9%),
+    # off this x-scale, so its value is reported as text in the stats column (numeric parity).
     for yp, (lab, t, col) in zip(ypos, arms):
         p = load_primary(t); blk = strat(p, 7, "transition")
         x = blk["X_pct_withpast"]; ci = blk["X_pct_withpast_CI95"]
+        tftv = _tft_xpct_t7(f"baseline-tft_{t}")        # TFT arm, if trained
         c.errorbar(x, yp, xerr=[[x-ci[0]], [ci[1]-x]], fmt="o", color=col, capsize=2.5, lw=1.2)
-        c.text(STATX, yp, f"{x:+.2f}%  [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.8)
-    c.text(STATX, len(arms)-0.35, "mean [95% CI]", ha="right", va="center", fontsize=5.6, color="#555", style="italic")
+        if tftv is None:
+            c.text(STATX, yp, f"TiRex {x:+.2f}% [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.4)
+        else:
+            c.text(STATX, yp + 0.16, f"TiRex {x:+.2f}% [{ci[0]:+.2f}, {ci[1]:+.2f}]", ha="right", va="center", fontsize=5.0)
+            c.text(STATX, yp - 0.16, f"TFT (trained) {tftv:+.2f}%", ha="right", va="center", fontsize=5.0, color="#555")
+    c.text(STATX, len(arms) - 0.32, "transition @7 min", ha="right", va="center", fontsize=5.4, color="#555", style="italic")
     c.axvline(0, color="#999", lw=0.7, ls="--")
     c.set_yticks(ypos); c.set_yticklabels([a[0] for a in arms])
     c.set_xlabel("CRPS reduction in transition windows @7 min (%)")

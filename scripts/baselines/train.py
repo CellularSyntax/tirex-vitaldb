@@ -98,6 +98,8 @@ def main():
     ap.add_argument("--config", default="datasets/vitaldb/configs/data.yaml")
     ap.add_argument("--eval-config", default="configs/eval.yaml")
     ap.add_argument("--model", default="tft", help="architecture in baselines.models.MODELS")
+    ap.add_argument("--cov", default="ce", choices=list(P.COV_PRESETS),
+                    help="covariate preset fed as the known future covariate (ce/rate/pressor/...)")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--n-cases", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
@@ -117,16 +119,21 @@ def main():
 
     ev = yaml.safe_load(open(args.eval_config))
     cfg = L.load_config(args.config); clin = L._clinical_index(cfg["clinical_csv"])
+    # select the covariate preset (which future channels are fed + the anchor for windowing)
+    preset = P.COV_PRESETS[args.cov]
+    P.FUTURE_COV = list(preset["future"]); P.PRIMARY_COV = preset["primary"]; P.TRANSITION_THR = preset["trans_thr"]
+    cov_sfx = "" if args.cov == "ce" else f"_cov{args.cov}"
     if args.match_tirex:
         cases = sorted({r["caseid"] for r in csv.DictReader(open(args.match_tirex))})
         stem = os.path.basename(args.match_tirex).replace("ablation_windows_", "").replace(".csv", "")
-        tag = args.tag or f"baseline-{args.model}_{stem}"
+        base = f"baseline-{args.model}_{stem}"
+        tag = args.tag or (base if (not cov_sfx or base.endswith(cov_sfx)) else base + cov_sfx)
     else:
         man = [r["caseid"] for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv"))
                if r["include"] in ("1", "True", "true")]
         rng = np.random.default_rng(args.seed)
         cases = man if args.all else list(rng.choice(man, min(args.n_cases, len(man)), replace=False))
-        tag = args.tag or (f"baseline-{args.model}_" + ("all" if args.all else f"n{len(cases)}"))
+        tag = args.tag or (f"baseline-{args.model}_" + ("all" if args.all else f"n{len(cases)}") + cov_sfx)
 
     probe = next((r for r in (L.load_case(c, cfg, clin) for c in cases) if r is not None), None)
     dt = probe["interval_s"]; Lc = int(ev["context_min"] * 60 / dt)
@@ -134,7 +141,8 @@ def main():
     stride = int(ev["origin_stride_min"] * 60 / dt); warmup = int(ev["warmup_min"] * 60 / dt)
     min_run = max(1, int(ev.get("hypotension", {}).get("min_sustain_min", 1) * 60 / dt))
     dev = torch.device(args.device)
-    print(f"[base] model={args.model} dt={dt} Lc={Lc} H={H} cases={len(cases)} device={args.device} tag={tag}", flush=True)
+    print(f"[base] model={args.model} cov={args.cov} future={P.FUTURE_COV} dt={dt} Lc={Lc} H={H} "
+          f"cases={len(cases)} device={args.device} tag={tag}", flush=True)
 
     c2s = caseid_to_subject(cfg["clinical_csv"])
     split = subject_split(cases, c2s, seed=args.seed)     # canonical 60/20/20 subject split
@@ -158,7 +166,7 @@ def main():
         va = D.to_tensors(win["val"], norm, use_future)
         te = D.to_tensors(win["test"], norm, use_future)
         torch.manual_seed(args.seed)
-        model = build_model(args.model, n_past, n_fut, H, d=args.d_model).to(dev)
+        model = build_model(args.model, n_past, n_fut, H, context_len=Lc, d=args.d_model).to(dev)
         n_par = sum(p.numel() for p in model.parameters())
         print(f"[base] {arm}: {n_par/1e3:.0f}k params, {tr[0].shape[0]} train windows", flush=True)
         model, hist[arm] = train_arm(model, tr, va, args, dev)
