@@ -45,6 +45,8 @@
 \end{figure}
 \clearpage
 \section{Tables}
+\noindent\textit{In the head-to-head tables (4--7), the best value in each comparison is shown in \textbf{bold} --- highest AUROC, or lowest CRPS/MAE. External literature foils and covariate-free (M0) columns are excluded from the primary comparison.}
+\medskip
 \begin{table}[H]\centering\footnotesize
 \caption{Cohort characteristics --- cases contributing $\geq$1 forecast window (n=2708, tag=all2873).}
 \begin{adjustbox}{max width=\textwidth}
@@ -112,12 +114,12 @@ Hypotension prevalence @15 min, \% & 18.4 \\
 \toprule
 \textbf{Horizon (min)} & \textbf{TiRex-2 zero-shot [95\% CI]} & \textbf{TFT M1 [95\% CI]} & \textbf{PatchTST M1 [95\% CI]} & \textbf{TFT M0} & \textbf{PatchTST M0} & \textbf{Kapral ext.} & \textbf{Zhu ext.} \\
 \midrule
-1 & 0.986 [0.984, 0.987] & 0.982 [0.980, 0.985] $\pm$0.003 & 0.983 [0.980, 0.985] $\pm$0.002 & 0.984 & 0.982 & --- & --- \\
-3 & 0.955 [0.951, 0.958] & 0.947 [0.943, 0.951] $\pm$0.003 & 0.956 [0.952, 0.959] $\pm$0.005 & 0.945 & 0.947 & --- & --- \\
-5 & 0.929 [0.924, 0.934] & 0.923 [0.918, 0.929] $\pm$0.005 & 0.937 [0.933, 0.941] $\pm$0.005 & 0.913 & 0.920 & 0.903 & 0.904 \\
-7 & 0.905 [0.900, 0.911] & 0.903 [0.898, 0.909] $\pm$0.004 & 0.918 [0.914, 0.923] $\pm$0.005 & 0.888 & 0.897 & 0.867 & --- \\
-10 & 0.877 [0.871, 0.883] & 0.881 [0.876, 0.887] $\pm$0.004 & 0.898 [0.893, 0.903] $\pm$0.005 & 0.858 & 0.871 & --- & 0.892 \\
-15 & 0.849 [0.842, 0.855] & 0.860 [0.854, 0.866] $\pm$0.003 & 0.875 [0.869, 0.881] $\pm$0.004 & 0.831 & 0.846 & --- & 0.882 \\
+1 & \textbf{0.986 [0.984, 0.987]} & 0.982 [0.980, 0.985] $\pm$0.003 & 0.983 [0.980, 0.985] $\pm$0.002 & \textbf{0.984} & 0.982 & --- & --- \\
+3 & 0.955 [0.951, 0.958] & 0.947 [0.943, 0.951] $\pm$0.003 & \textbf{0.956 [0.952, 0.959] $\pm$0.005} & 0.945 & \textbf{0.947} & --- & --- \\
+5 & 0.929 [0.924, 0.934] & 0.923 [0.918, 0.929] $\pm$0.005 & \textbf{0.937 [0.933, 0.941] $\pm$0.005} & 0.913 & \textbf{0.920} & 0.903 & 0.904 \\
+7 & 0.905 [0.900, 0.911] & 0.903 [0.898, 0.909] $\pm$0.004 & \textbf{0.918 [0.914, 0.923] $\pm$0.005} & 0.888 & \textbf{0.897} & 0.867 & --- \\
+10 & 0.877 [0.871, 0.883] & 0.881 [0.876, 0.887] $\pm$0.004 & \textbf{0.898 [0.893, 0.903] $\pm$0.005} & 0.858 & \textbf{0.871} & --- & 0.892 \\
+15 & 0.849 [0.842, 0.855] & 0.860 [0.854, 0.866] $\pm$0.003 & \textbf{0.875 [0.869, 0.881] $\pm$0.004} & 0.831 & \textbf{0.846} & --- & 0.882 \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -130,12 +132,12 @@ Hypotension prevalence @15 min, \% & 18.4 \\
 \toprule
 \textbf{Horizon (min)} & \textbf{CRPS TiRex-2} & \textbf{CRPS TFT} & \textbf{CRPS PatchTST} & \textbf{MAE TiRex-2 (mmHg)} & \textbf{MAE TFT (mmHg)} & \textbf{MAE PatchTST (mmHg)} \\
 \midrule
-1 & 1.251 & 1.311 & 1.281 & 3.03 & 3.15 & 3.10 \\
-3 & 1.827 & 1.779 & 1.726 & 4.46 & 4.35 & 4.24 \\
-5 & 2.221 & 2.071 & 2.004 & 5.46 & 5.11 & 4.97 \\
-7 & 2.515 & 2.273 & 2.200 & 6.20 & 5.65 & 5.48 \\
-10 & 2.839 & 2.482 & 2.407 & 7.01 & 6.20 & 6.02 \\
-15 & 3.213 & 2.716 & 2.656 & 7.95 & 6.82 & 6.68 \\
+1 & \textbf{1.251} & 1.311 & 1.281 & \textbf{3.03} & 3.15 & 3.10 \\
+3 & 1.827 & 1.779 & \textbf{1.726} & 4.46 & 4.35 & \textbf{4.24} \\
+5 & 2.221 & 2.071 & \textbf{2.004} & 5.46 & 5.11 & \textbf{4.97} \\
+7 & 2.515 & 2.273 & \textbf{2.200} & 6.20 & 5.65 & \textbf{5.48} \\
+10 & 2.839 & 2.482 & \textbf{2.407} & 7.01 & 6.20 & \textbf{6.02} \\
+15 & 3.213 & 2.716 & \textbf{2.656} & 7.95 & 6.82 & \textbf{6.68} \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -148,12 +150,12 @@ Hypotension prevalence @15 min, \% & 18.4 \\
 \toprule
 \textbf{Horizon (min)} & \textbf{TiRex-2 [95\% CI]} & \textbf{Chronos-Bolt [95\% CI]} & \textbf{TimesFM-2.5 [95\% CI]} & \textbf{Moirai-1.1-R [95\% CI]} \\
 \midrule
-1 & 0.986 [0.984, 0.987] & 0.984 [0.980, 0.987] & 0.985 [0.980, 0.989] & 0.972 [0.963, 0.979] \\
-3 & 0.955 [0.951, 0.958] & 0.945 [0.934, 0.954] & 0.942 [0.931, 0.951] & 0.936 [0.924, 0.947] \\
-5 & 0.929 [0.924, 0.934] & 0.924 [0.912, 0.934] & 0.921 [0.908, 0.932] & 0.922 [0.911, 0.933] \\
-7 & 0.905 [0.900, 0.911] & 0.898 [0.883, 0.910] & 0.897 [0.882, 0.910] & 0.899 [0.885, 0.910] \\
-10 & 0.877 [0.871, 0.883] & 0.876 [0.861, 0.888] & 0.876 [0.861, 0.890] & 0.876 [0.863, 0.889] \\
-15 & 0.849 [0.842, 0.855] & 0.849 [0.833, 0.863] & 0.854 [0.838, 0.869] & 0.847 [0.831, 0.861] \\
+1 & \textbf{0.986 [0.984, 0.987]} & 0.984 [0.980, 0.987] & 0.985 [0.980, 0.989] & 0.972 [0.963, 0.979] \\
+3 & \textbf{0.955 [0.951, 0.958]} & 0.945 [0.934, 0.954] & 0.942 [0.931, 0.951] & 0.936 [0.924, 0.947] \\
+5 & \textbf{0.929 [0.924, 0.934]} & 0.924 [0.912, 0.934] & 0.921 [0.908, 0.932] & 0.922 [0.911, 0.933] \\
+7 & \textbf{0.905 [0.900, 0.911]} & 0.898 [0.883, 0.910] & 0.897 [0.882, 0.910] & 0.899 [0.885, 0.910] \\
+10 & \textbf{0.877 [0.871, 0.883]} & 0.876 [0.861, 0.888] & 0.876 [0.861, 0.890] & 0.876 [0.863, 0.889] \\
+15 & 0.849 [0.842, 0.855] & 0.849 [0.833, 0.863] & \textbf{0.854 [0.838, 0.869]} & 0.847 [0.831, 0.861] \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -166,12 +168,12 @@ Hypotension prevalence @15 min, \% & 18.4 \\
 \toprule
 \textbf{Test cohort} & \textbf{Model (training source)} & \textbf{1 min} & \textbf{3 min} & \textbf{5 min} & \textbf{7 min} & \textbf{10 min} & \textbf{15 min} \\
 \midrule
-VitalDB & TiRex-2 (zero-shot) & 0.986 & 0.953 & 0.924 & 0.900 & 0.872 & 0.846 \\
+VitalDB & TiRex-2 (zero-shot) & \textbf{0.986} & \textbf{0.953} & \textbf{0.924} & \textbf{0.900} & \textbf{0.872} & \textbf{0.846} \\
  & TFT (in-domain) & 0.983 & 0.945 & 0.913 & 0.888 & 0.858 & 0.831 \\
  & TFT (trained MOVER) & 0.964 & 0.924 & 0.897 & 0.874 & 0.849 & 0.825 \\
- & PatchTST (in-domain) & 0.982 & 0.947 & 0.920 & 0.897 & 0.870 & 0.846 \\
+ & PatchTST (in-domain) & 0.982 & 0.947 & 0.920 & 0.897 & 0.870 & \textbf{0.846} \\
  & PatchTST (trained MOVER) & 0.967 & 0.928 & 0.900 & 0.877 & 0.851 & 0.832 \\
-MOVER & TiRex-2 (zero-shot) & 0.949 & 0.921 & 0.901 & 0.888 & 0.875 & 0.858 \\
+MOVER & TiRex-2 (zero-shot) & \textbf{0.949} & \textbf{0.921} & \textbf{0.901} & \textbf{0.888} & \textbf{0.875} & \textbf{0.858} \\
  & TFT (in-domain) & pending & pending & pending & pending & pending & pending \\
  & TFT (trained VitalDB) & 0.940 & 0.914 & 0.895 & 0.881 & 0.866 & 0.846 \\
  & PatchTST (in-domain) & pending & pending & pending & pending & pending & pending \\

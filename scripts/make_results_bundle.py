@@ -104,6 +104,63 @@ def md_caption(name):
     return re.sub(r"^Table\s+\d+\.\s*", "", cap)   # drop redundant "Table N." (LaTeX auto-numbers)
 
 
+# ── best-value highlighting ─────────────────────────────────────────────────────────────
+# Per table, a list of comparison GROUPS; the winning cell(s) in each group render in bold so
+# "who wins on what" is legible at a glance. Only head-to-head tables are configured; TiRex-only
+# characterisation tables (2, 3) are left plain. axis="row" (default) compares the given columns
+# within each body row; axis="col" compares each given column across the rows of each block,
+# where blocks are delimited by a non-empty value in column `block_col`.
+BOLD = {
+    "Table4_matched": [
+        {"cols": [1, 2, 3], "dir": "max"},          # TiRex-2 vs TFT M1 vs PatchTST M1 (identical data)
+        {"cols": [4, 5], "dir": "max"},             # TFT M0 vs PatchTST M0 (covariate-free)
+    ],
+    "Table5_matched_forecast": [
+        {"cols": [1, 2, 3], "dir": "min"},          # CRPS: TiRex-2 / TFT / PatchTST (lower better)
+        {"cols": [4, 5, 6], "dir": "min"},          # MAE: TiRex-2 / TFT / PatchTST (lower better)
+    ],
+    "Table6_zeroshot": [
+        {"cols": [1, 2, 3, 4], "dir": "max"},       # TiRex-2 vs Chronos / TimesFM / Moirai
+    ],
+    "Table7_transfer": [
+        {"axis": "col", "cols": [2, 3, 4, 5, 6, 7], "dir": "max", "block_col": 0},  # per horizon, per test cohort
+    ],
+}
+
+
+def _lead_num(s):
+    m = re.match(r"\s*(-?\d+\.?\d*)", str(s))
+    return float(m.group(1)) if m else None
+
+
+def _bold_targets(name, body):
+    """Set of (row, col) body-cell coordinates whose best-in-group value should render bold."""
+    targets = set()
+    for g in BOLD.get(name, []):
+        cols, best = g["cols"], (max if g["dir"] == "max" else min)
+        if g.get("axis", "row") == "row":
+            for r, row in enumerate(body):
+                vals = [(c, _lead_num(row[c])) for c in cols if c < len(row) and _lead_num(row[c]) is not None]
+                if not vals:
+                    continue
+                bv = best(v for _, v in vals)
+                targets |= {(r, c) for c, v in vals if abs(v - bv) < 1e-9}
+        else:  # axis == "col": compare down each column, within blocks delimited by block_col
+            bc = g.get("block_col", 0)
+            starts = [r for r, row in enumerate(body) if r == 0 or (bc < len(row) and row[bc].strip())]
+            blocks = [(s, (starts[i + 1] - 1 if i + 1 < len(starts) else len(body) - 1))
+                      for i, s in enumerate(starts)]
+            for r0, r1 in blocks:
+                for c in cols:
+                    vals = [(r, _lead_num(body[r][c])) for r in range(r0, r1 + 1)
+                            if c < len(body[r]) and _lead_num(body[r][c]) is not None]
+                    if not vals:
+                        continue
+                    bv = best(v for _, v in vals)
+                    targets |= {(r, c) for r, v in vals if abs(v - bv) < 1e-9}
+    return targets
+
+
 def table_tex(name, caption):
     csv_path = f"{TAB_DIR}/{name}.csv"
     if not os.path.exists(csv_path):
@@ -113,13 +170,15 @@ def table_tex(name, caption):
         return ""
     header, body = rows[0], rows[1:]
     ncol = len(header)
+    bold = _bold_targets(name, body)
     L = [r"\begin{table}[H]\centering\footnotesize",
          r"\caption{" + (caption or name) + "}",   # caption already LaTeX-ready (see main)
          r"\begin{adjustbox}{max width=\textwidth}",
          r"\begin{tabular}{" + "l" * ncol + "}", r"\toprule",
          " & ".join(r"\textbf{" + esc(h) + "}" for h in header) + r" \\", r"\midrule"]
-    for r in body:
-        L.append(" & ".join(esc(x) for x in r) + r" \\")
+    for r, row in enumerate(body):
+        L.append(" & ".join((r"\textbf{" + esc(x) + "}") if (r, c) in bold else esc(x)
+                            for c, x in enumerate(row)) + r" \\")
     L += [r"\bottomrule", r"\end{tabular}", r"\end{adjustbox}", r"\end{table}", ""]
     return "\n".join(L)
 
@@ -149,7 +208,11 @@ def main():
                 r"\includegraphics[width=\linewidth]{" + name + ".pdf}",
                 r"\caption{" + cap + "}",
                 r"\end{figure}"]
-    doc += [r"\clearpage", r"\section{Tables}"]
+    doc += [r"\clearpage", r"\section{Tables}",
+            r"\noindent\textit{In the head-to-head tables (4--7), the best value in each comparison "
+            r"is shown in \textbf{bold} --- highest AUROC, or lowest CRPS/MAE. External literature "
+            r"foils and covariate-free (M0) columns are excluded from the primary comparison.}",
+            r"\medskip"]
     for name, override in TABLES:
         # override captions are author-written LaTeX (kept raw); .md captions are plain text -> escape
         cap = override if override is not None else esc(md_caption(name) or name)
