@@ -109,8 +109,8 @@ def _schematic(ax):
     ax.axvspan(-30, 0, color="#F2F2F2", zorder=0)
     ax.axvline(0, color="#888", lw=0.8, ls=":")
     ax.axhline(65, color=S.C["event"], lw=0.8, ls="--")
-    ax.text(-29, 96, "context (30 min)", fontsize=6, color="#555")
-    ax.text(1, 96, "forecast horizon (→15 min)", fontsize=6, color="#555")
+    ax.text(-15, 57, "context (30 min)", fontsize=6, color="#555", ha="center")
+    ax.text(7.5, 57, "forecast horizon (→15 min)", fontsize=6, color="#555", ha="center")
     ax.text(13.5, 66.5, "MAP 65", fontsize=5.5, color=S.C["event"], ha="right")
     # covariate strip
     inf = 0.5*(1+np.tanh((t+2)/4))
@@ -125,7 +125,7 @@ def _schematic(ax):
     ax2.spines["left"].set_visible(False)
     ax.set_xlim(-30, 15); ax.set_ylim(55, 100); ax.set_xticks([])
     ax.set_ylabel("MAP (mmHg)"); ax.set_title("Forecasting task", loc="left")
-    ax.legend(loc="lower left", fontsize=5.5)
+    ax.legend(loc="upper right", fontsize=5.5)
 
 
 def _cohort_flow(ax, flow, prim, hyp, n_cohort):
