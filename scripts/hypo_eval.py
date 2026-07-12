@@ -16,7 +16,7 @@ Run:  PYTHONPATH=scripts <venv>/bin/python scripts/hypo_eval.py n300_s1
 Writes results/hypo_metrics_<tag>.json + outputs/figs/hypo_{roc,roc_combined,pr,pr_combined,
 calibration,operating}_<tag>.png
 """
-import csv, glob, json, sys
+import csv, glob, json, os, sys
 import numpy as np
 try:                                        # plotting is optional — the metric functions
     import matplotlib                       # (auroc/calibration/…) reused by compare.py and the
@@ -160,7 +160,7 @@ def load_rows(tag):
 
 def caseid_to_subject():
     m = {}
-    for r in csv.DictReader(open("datasets/vitaldb/data/clinical_data.csv", encoding="utf-8-sig")):
+    for r in csv.DictReader(open(os.environ.get("HE_CLINICAL", "datasets/vitaldb/data/clinical_data.csv"), encoding="utf-8-sig")):
         m[str(int(r["caseid"]))] = str(r["subjectid"])
     return m
 

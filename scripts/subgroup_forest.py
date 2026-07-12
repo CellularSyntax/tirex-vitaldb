@@ -7,7 +7,7 @@ heterogeneity analysis over the whole cohort (not the dev/test split used for th
 Run:  PYTHONPATH=scripts <venv>/bin/python scripts/subgroup_forest.py n300_s1 [horizon_min=5]
 Writes results/subgroup_forest_<tag>_h<h>.json + outputs/figs/subgroup_forest_<tag>_h<h>.png
 """
-import csv, json, sys
+import csv, json, os, sys
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -24,7 +24,7 @@ def parse_age(a):
 def manifest_meta():
     """caseid -> dict of subgroup fields."""
     m = {}
-    for r in csv.DictReader(open("datasets/vitaldb/cohort_manifest.csv")):
+    for r in csv.DictReader(open(os.environ.get("SF_MANIFEST", "datasets/vitaldb/cohort_manifest.csv"))):
         if r.get("include") != "1":
             continue
         m[str(int(r["caseid"]))] = r

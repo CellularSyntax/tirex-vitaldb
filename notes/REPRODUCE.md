@@ -275,17 +275,37 @@ CKPT=results/baseline_ckpt_mover_tft.pt     CONFIG=datasets/vitaldb/configs/data
 # (+ the two patchtst directions)
 ```
 
-### 6c. Pull down + figures
+### 6c. Pull down + rebuild (everything derived is local)
 ```bash
-scp -r <cluster>:~/tirex-2/tirex-vitaldb/results ./
-# MOVER external-validation figure set (Fig 3/4/5 re-run on the MOVER tag; VitalDB-only foils dropped):
-$PYP python scripts/paper_figures.py mover_art        # (once the figure scripts are MOVER-aware — see NOTE)
+scp -r <cluster>:~/tirex-2/tirex-vitaldb/results ./     # or the scoped rsync from §3
+bash scripts/rebuild_local.sh                           # regenerates ALL derived artifacts (see §3)
 ```
-> **NOTE (figure integration — not automatic yet).** `paper_figures.py` is currently hardwired to
-> VitalDB (`TAG=all2873`, Kapral/Zhu foils, single-split `canonical_test_subjects`). To include MOVER
-> and use the 5-fold CV / transfer results we need: (i) switch the matched comparison to all-cases OOF
-> + report fold SD; (ii) drop VitalDB-only foils when `tag=mover_art`; (iii) a NEW cross-dataset figure
-> (train×test transfer matrix + zero-shot-on-both). Tracked as the next figure-build task.
+`rebuild_local.sh` now folds in every cross-dataset result automatically:
+- **Fig 6 + Table 7** (`transfer_figure.py`): 2×2 train×test transfer matrix, M0. The MOVER in-domain
+  diagonal reads the CV files `baseline-{tft,patchtst}_mover_art_covmover_rate` (non-`ce` covs append
+  a `_cov<preset>` suffix; the foils `baseline-*_mover_art` do not).
+- **Table 8** (`external_table.py`): stratified external validation of zero-shot TiRex-2, VitalDB vs
+  MOVER, AUROC/CRPS/MAE by horizon.
+- **FigS_zeroshot_mover + TableS_zeroshot_mover** (`paper_figures.py`): the zero-shot FM benchmark
+  (TiRex-2 vs Chronos/TimesFM/Moirai) repeated on the external MOVER cohort. Auto-emitted in `main()`.
+
+### 6d. Two-cohort Fig 1b funnel + MOVER clinical supplement (small cluster round-trip)
+The MOVER cache/manifest live only on the cluster, so the MOVER *curation funnel* (Fig 1b right side)
+and the cache-dependent MOVER *clinical* aggregates are produced there, then pulled down as small JSONs.
+The post-hoc scripts are cohort-agnostic via env vars (defaults = VitalDB): `CE_CONFIG` (clinical_eval
+dataset config), `HE_CLINICAL` (hypo_eval demographics csv), `SF_MANIFEST` (subgroup_forest manifest).
+```bash
+# on the cluster (project root, in the container / a python env):
+bash scripts/mover_supp_analyses.sh          # writes results/mover_cohort_flow.json + MOVER hypo/clinical JSONs
+# on the Mac — pull only the MOVER aggregates, then rebuild:
+rsync -av <cluster>:~/tirex-2/tirex-vitaldb/results/ ./results/ \
+      --include='*mover*' --include='mover_cohort_flow.json' --exclude='*'
+bash scripts/rebuild_local.sh                # Fig 1b now renders the VitalDB + MOVER two-cohort funnel
+```
+Once `results/mover_cohort_flow.json` is present, `paper_figures.py` `figure1()` automatically draws the
+two-cohort funnel (development VitalDB | external MOVER); until then it draws the VitalDB funnel only.
+> NOTE: the MOVER **subgroup forest** (Fig 5c-style) is intentionally not ported — `subgroup_forest.py`
+> keys on VitalDB demographics (ASA, Department) that the MOVER SIS tables don't carry.
 
 ## Adding another dataset
 Drop it in as `datasets/<name>/` (a loader exposing `load_config`/`_clinical_index`/`load_case` that

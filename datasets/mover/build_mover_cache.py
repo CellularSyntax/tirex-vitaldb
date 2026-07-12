@@ -10,7 +10,7 @@ Run (cluster, CPU): PYTHONPATH=datasets/mover python datasets/mover/build_mover_
                         --config datasets/mover/configs/data.yaml
 """
 from __future__ import annotations
-import argparse, csv, os, sys
+import argparse, csv, json, os, sys
 from datetime import datetime
 import numpy as np
 import yaml
@@ -212,6 +212,15 @@ def main():
     n_incl = sum(i for _, i in manifest)
     print(f"[mover] DONE: {written} caches written; {n_incl} cases included / {len(manifest)} candidates.", flush=True)
     print(f"[mover] wrote {cfg['clinical_csv']} and {cfg['cohort_manifest']}", flush=True)
+    # cohort funnel for Fig 1b (pulled down to build the two-cohort curation panel locally)
+    os.makedirs("results", exist_ok=True)
+    json.dump({"n_or_window": len(info), "n_with_map": len(acc), "n_with_infusion": len(has_infusion),
+               "included_N": n_incl, "n_cached": written,
+               "thresholds": {"min_map_minutes": M["min_map_minutes"],
+                              "min_target_coverage": cfg.get("min_target_coverage", 0.5),
+                              "require_infusion": M.get("require_infusion", True)}},
+              open("results/mover_cohort_flow.json", "w"), indent=2)
+    print("[mover] wrote results/mover_cohort_flow.json", flush=True)
 
 
 if __name__ == "__main__":

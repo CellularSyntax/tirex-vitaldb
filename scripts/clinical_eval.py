@@ -13,7 +13,7 @@ C. Decision curve analysis — net benefit of acting on the alarm vs treat-all /
 Run:  PYTHONPATH=scripts <venv>/bin/python scripts/clinical_eval.py n300_s1
 Writes results/clinical_eval_<tag>.json + outputs/figs/clinical_{leadtime,severity,decisioncurve}_<tag>.png
 """
-import csv, glob, json, sys
+import csv, glob, json, os, sys
 from collections import defaultdict
 import numpy as np
 import matplotlib
@@ -239,7 +239,13 @@ def main():
     rows, files = load_rows(tag)
     import yaml
     ev = yaml.safe_load(open("configs/eval.yaml"))
-    cfg = L.load_config("datasets/vitaldb/configs/data.yaml"); clin = L._clinical_index(cfg["clinical_csv"])
+    # cohort-agnostic: CE_CONFIG selects the dataset (default VitalDB); the loader is picked from its
+    # `loader:` key, so this runs unchanged on MOVER (CE_CONFIG=datasets/mover/configs/data.yaml).
+    global L
+    from phase3_ablation import get_loader
+    _config = os.environ.get("CE_CONFIG", "datasets/vitaldb/configs/data.yaml")
+    L = get_loader(_config)
+    cfg = L.load_config(_config); clin = L._clinical_index(cfg["clinical_csv"])
     probe = next((L.load_case(str(r["caseid"]), cfg, clin) for r in rows), None)
     DT = probe["interval_s"]
     hsteps = [int(m * 60 / DT) for m in HMIN]

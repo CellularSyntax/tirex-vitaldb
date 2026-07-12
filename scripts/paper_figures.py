@@ -165,7 +165,13 @@ def figure1(tag):
     pa = ax_sch.get_position(); pb = ax_flow.get_position()
     new_bottom = pa.y0 - 0.40*pa.height       # align with the schematic inset's bottom edge
     ax_flow.set_position([pb.x0, new_bottom, pb.width, pb.y1 - new_bottom])
-    _cohort_flow(ax_flow, flow, prim, hyp, n_cohort)
+    mover = None                                    # two-cohort funnel once the MOVER curation JSON is pulled down
+    if os.path.exists("results/mover_cohort_flow.json"):
+        mover = json.load(open("results/mover_cohort_flow.json"))
+        mover["_n_cases"] = len(windows_caseids("mover_art"))
+        mp = load_primary("mover_art")
+        mover["_n_windows"] = mp["n_windows"] if mp else mover.get("n_cached", 0)
+    _cohort_flow(ax_flow, flow, prim, hyp, n_cohort, mover)
     S.panel_letter(ax_flow, "b", dx=-0.10, dy=1.06)
 
     # c — three representative forecasts (steady / transition / hypotensive onset)
@@ -211,29 +217,49 @@ def _schematic(ax):
     ax.legend(loc="upper right", fontsize=5.5)
 
 
-def _cohort_flow(ax, flow, prim, hyp, n_cohort):
-    ax.axis("off")
-    n0 = flow["n_local_scanned"]; nCand = flow["included_N"]
-    nw = prim["n_windows"]
-    steps = [
-        (f"VitalDB cases scanned\nn = {n0:,}", "#E8EEF2"),
-        (f"Anesthetic cohort\n(remifentanil + propofol)\nn = {nCand:,}", S.C["M1_light"]),
-        (f"Cases with ≥ 1 window\nn = {n_cohort:,}", "#CFE3E7"),
-        (f"Forecast windows\nn = {nw:,}", "#EAD9BD"),
-    ]
-    n = len(steps); gap = 0.06
-    box_h = (1.0 - (n-1)*gap) / n          # fill the full cell height
+def _funnel(ax, steps, x0, x1, header=None, fs=6.4):
+    """Draw a vertical funnel of labelled boxes between axes-fraction x0..x1."""
+    n = len(steps); gap = 0.055
+    y_top = 0.92 if header else 1.0
+    box_h = (y_top - (n - 1) * gap) / n
+    xc = (x0 + x1) / 2
+    if header:
+        ax.text(xc, 0.975, header, transform=ax.transAxes, ha="center", va="center",
+                fontsize=fs + 0.6, fontweight="bold")
     for i, (txt, col) in enumerate(steps):
-        top = 1.0 - i*(box_h+gap); bot = top - box_h
-        ax.add_patch(plt.Rectangle((0.04, bot), 0.92, box_h, transform=ax.transAxes,
+        top = y_top - i * (box_h + gap); bot = top - box_h
+        ax.add_patch(plt.Rectangle((x0, bot), x1 - x0, box_h, transform=ax.transAxes,
                      facecolor=col, edgecolor="#777", lw=0.7, zorder=2))
-        ax.text(0.5, (top+bot)/2, txt, transform=ax.transAxes, ha="center", va="center",
-                fontsize=6.6, zorder=3)
-        if i < n-1:
-            ax.annotate("", xy=(0.5, bot-gap+0.006), xytext=(0.5, bot-0.004),
-                        xycoords="axes fraction",
-                        arrowprops=dict(arrowstyle="-|>", color="#666", lw=1.0))
-    ax.set_ylim(0, 1)
+        ax.text(xc, (top + bot) / 2, txt, transform=ax.transAxes, ha="center", va="center",
+                fontsize=fs, zorder=3)
+        if i < n - 1:
+            ax.annotate("", xy=(xc, bot - gap + 0.006), xytext=(xc, bot - 0.004),
+                        xycoords="axes fraction", arrowprops=dict(arrowstyle="-|>", color="#666", lw=1.0))
+
+
+def _cohort_flow(ax, flow, prim, hyp, n_cohort, mover=None):
+    """Curation funnel. Development cohort (VitalDB) always; if `mover` (from mover_cohort_flow.json
+    + windowed counts) is present, render VitalDB and MOVER side by side as a two-cohort panel."""
+    ax.axis("off"); ax.set_ylim(0, 1)
+    vd = [
+        (f"VitalDB cases scanned\nn = {flow['n_local_scanned']:,}", "#E8EEF2"),
+        (f"Anesthetic cohort\n(remifentanil + propofol)\nn = {flow['included_N']:,}", S.C["M1_light"]),
+        (f"Cases with ≥ 1 window\nn = {n_cohort:,}", "#CFE3E7"),
+        (f"Forecast windows\nn = {prim['n_windows']:,}", "#EAD9BD"),
+    ]
+    if not mover:
+        _funnel(ax, vd, 0.04, 0.96)
+        return
+    _funnel(ax, vd, 0.02, 0.47, "Development: VitalDB", fs=5.6)
+    mv = []
+    if mover.get("n_candidates"):
+        mv.append((f"SIS cases screened\nn = {mover['n_candidates']:,}", "#E8EEF2"))
+    mv += [
+        (f"Invasive arterial +\ninfusion cohort\nn = {mover['included_N']:,}", S.C["M1_light"]),
+        (f"Cases with ≥ 1 window\nn = {mover['_n_cases']:,}", "#CFE3E7"),
+        (f"Forecast windows\nn = {mover['_n_windows']:,}", "#EAD9BD"),
+    ]
+    _funnel(ax, mv, 0.53, 0.98, "External: MOVER", fs=5.6)
 
 
 def _pick_examples(ex):
