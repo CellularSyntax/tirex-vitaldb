@@ -272,13 +272,13 @@ def figure2(tag):
 
 
 def _kapral_panel(ax, tag):
-    # our instantaneous endpoint MAE from windows
-    rows, _ = H.load_rows(tag)
+    # our instantaneous endpoint MAE on the matched test split (both our models)
+    c2s = H.caseid_to_subject()
+    rows, _ = H.load_rows(tag); brows, _ = H.load_rows(f"baseline-tft_{tag}")
+    tsub = canonical_test_subjects(rows, c2s)
     hs = MAIN_H
-    our = []
-    for h in hs:
-        v = [float(r["mae_inst_M1"]) for r in rows if int(r["h_min"]) == h and r.get("mae_inst_M1") not in ("", "nan", None)]
-        our.append(np.mean(v) if v else np.nan)
+    our = _mean_metric_by_h(rows, c2s, tsub, "mae_inst_M1", hs)
+    tft = _mean_metric_by_h(brows, c2s, tsub, "mae_inst_M1", hs)
     # Kapral digitized curves (instantaneous)
     K = {}
     for r in csv.DictReader(open("results/kapral_mae_curves.csv")):
@@ -296,11 +296,12 @@ def _kapral_panel(ax, tag):
             if xl.size and xu.size:
                 yl_i = np.interp(xm, xl, yl); yu_i = np.interp(xm, xu, yu)
                 ax.fill_between(xm, yl_i, yu_i, color=col, alpha=0.10, lw=0)
+    ax.plot(hs, tft, "--s", color=TFT_COL, lw=1.6, ms=4, zorder=5, label="TFT (trained, ours)")
     ax.plot(hs, our, "-o", color=S.C["M1"], lw=2.4, ms=6, mec="white", mew=1.0,
-            zorder=6, label="TiRex-2 (ours, M1)")
+            zorder=6, label="TiRex-2 (zero-shot, ours)")
     ax.set_xlim(0, 7.4); ax.set_ylim(0, None)
-    S.finish(ax, "forecast distance (min)", "instantaneous MAE (mmHg)", "Accuracy vs Kapral et al. (TFT)")
-    ax.legend(loc="upper left")
+    S.finish(ax, "forecast distance (min)", "instantaneous MAE (mmHg)", "Accuracy vs Kapral et al.")
+    ax.legend(loc="upper left", fontsize=5.6)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -341,16 +342,18 @@ def figure3(tag):
     ax_roc = fig.add_subplot(gs[0, 0]); ax_auc = fig.add_subplot(gs[0, 1]); ax_cal = fig.add_subplot(gs[0, 2])
     ax_pr = fig.add_subplot(gs[1, 0]); ax_dca = fig.add_subplot(gs[1, 1]); ax_bar = fig.add_subplot(gs[1, 2])
 
-    # a — ROC at 5 and 7 min (TiRex, matched test) + spec>=0.90 operating point
+    # a — ROC at 5 and 7 min: TiRex (solid) vs TFT (dashed), matched test
     for h, col in [(5, S.C["M1"]), (7, S.C["transition"])]:
         y, s = _scores_subj(rows, c2s, test_subj, h)
         fpr, tpr, _ = H.roc_points(y, s); au = H.auroc(y, s)
-        ax_roc.plot(fpr, tpr, "-", color=col, lw=1.4, label=f"{h} min (AUROC {au:.3f})")
-        ax_roc.plot(0.10, float(np.interp(0.10, fpr, tpr)), "o", color=col, ms=5, mec="white", mew=0.6, zorder=5)
+        ax_roc.plot(fpr, tpr, "-", color=col, lw=1.5, label=f"TiRex {h} min ({au:.3f})")
+        yb, sb = _scores_subj(base_rows, c2s, test_subj, h)
+        fb, tb, _ = H.roc_points(yb, sb); aub = H.auroc(yb, sb)
+        ax_roc.plot(fb, tb, "--", color=col, lw=1.0, label=f"TFT {h} min ({aub:.3f})")
     ax_roc.plot([0, 1], [0, 1], color="#BBB", lw=0.7, ls=":")
     ax_roc.set_xlim(0, 1); ax_roc.set_ylim(0, 1.005)
-    S.finish(ax_roc, "1 − specificity", "sensitivity", "ROC — TiRex-2 (zero-shot)")
-    ax_roc.legend(loc="lower right", bbox_to_anchor=(1.0, 0.02)); S.panel_letter(ax_roc, "a")
+    S.finish(ax_roc, "1 − specificity", "sensitivity", "ROC — zero-shot vs trained")
+    ax_roc.legend(loc="lower right", bbox_to_anchor=(1.0, 0.02), fontsize=5.2); S.panel_letter(ax_roc, "a")
 
     # b — AUROC vs horizon: zero-shot TiRex vs trained TFT (matched) + foils (THE panel)
     def arr(key, field):
