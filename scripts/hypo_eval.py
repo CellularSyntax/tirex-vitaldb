@@ -18,9 +18,12 @@ calibration,operating}_<tag>.png
 """
 import csv, glob, json, sys
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:                                        # plotting is optional — the metric functions
+    import matplotlib                       # (auroc/calibration/…) reused by compare.py and the
+    matplotlib.use("Agg")                   # zero-shot venvs don't need matplotlib installed.
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    plt = None
 
 SPEC_FLOOR = 0.90     # high-specificity region for pAUROC + a fixed-spec operating point
 OP_RULE = "youden"    # operating point marked on the ROC/PR curves (dev-selected)
@@ -261,6 +264,8 @@ def write_comparison_table(out, tag):
 
 # ---------- figures ----------
 def make_figs(rows, out, tag, c2s, dev_subjects):
+    if plt is None:
+        raise RuntimeError("make_figs needs matplotlib (install it, or run the metrics-only path)")
     horizons = out["horizons_min"]
     colors = {h: plt.cm.viridis(x) for h, x in zip(horizons, np.linspace(0, 0.88, len(horizons)))}
 
