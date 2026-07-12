@@ -17,7 +17,8 @@ OUT = "results_bundle.tex"
 FIGURES = [
     ("Fig1_design_cohort",
      "Study design and cohort. (a) Forecasting task: a 30-min MAP context and the known future "
-     "drug-infusion covariate condition a 15-min quantile forecast. (b) Cohort flow. (c) Representative "
+     "drug-infusion covariate condition a 15-min quantile forecast. (b) Two-cohort curation funnel --- "
+     "development (VitalDB) and independent external validation (MOVER). (c) Representative "
      "forecasts (steady, transition, hypotensive onset): the context window is shaded, the observed "
      "ground truth is muted, and the TiRex-2 median with 10--90\\% interval is overlaid."),
     ("Fig2_accuracy_covariate",
