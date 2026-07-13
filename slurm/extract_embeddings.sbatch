@@ -53,6 +53,9 @@ export NVIDIA_DRIVER_CAPABILITIES=compute,utility
 echo "Project root : ${PROJECT_ROOT}"; echo "Container : ${CONTAINER_IMAGE}"
 echo "MODEL=${MODEL} COV=${COV} CONFIG=${CONFIG} MATCH=${MATCH} MAXWIN=${MAXWIN}"
 
+# Extra args forwarded verbatim to the python script (e.g. EXTRA="--dump-structure").
+EXTRA="${EXTRA:-}"
+
 srun \
   --container-image="${CONTAINER_IMAGE}" \
   --container-mounts="${PROJECT_ROOT}:${PROJECT_ROOT}" \
@@ -67,7 +70,7 @@ if [ '${MODEL}' = 'tirex2' ]; then
   echo '[emb] tirex2 in container env'
   PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/extract_embeddings.py \
       --config ${CONFIG} --model tirex2 --cov ${COV} \
-      --match-tirex ${MATCH} --max-windows ${MAXWIN} --device cuda --batch-size 64
+      --match-tirex ${MATCH} --max-windows ${MAXWIN} --device cuda --batch-size 64 ${EXTRA}
 else
   # ungated foundation weights -> per-model isolated venv + allow downloads
   unset HF_HUB_OFFLINE || true
@@ -78,7 +81,7 @@ else
   source \"\$VENV/bin/activate\"
   PYTHONPATH=scripts:datasets/vitaldb:datasets/mover python scripts/baselines/extract_embeddings.py \
       --config ${CONFIG} --model ${MODEL} --cov ${COV} \
-      --match-tirex ${MATCH} --max-windows ${MAXWIN} --device cuda --batch-size 64
+      --match-tirex ${MATCH} --max-windows ${MAXWIN} --device cuda --batch-size 64 ${EXTRA}
 fi
 echo '[emb] Done.'
 "
