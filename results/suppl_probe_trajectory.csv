@@ -1,0 +1,13 @@
+cohort,model,type,MAP_now_R2,MAP_fut5_mean_R2,MAP_fut5_min_R2,MAP_futH_mean_R2,MAP_slope5_R2,MAP_slopeH_R2
+VitalDB,TiRex-2,zero-shot,-0.081,-0.081,-0.084,-0.086,-0.073,-0.083
+VitalDB,Chronos-Bolt,zero-shot,0.27,0.116,0.075,-0.042,-0.092,-0.077
+VitalDB,TimesFM-2.5,zero-shot,-0.183,-0.191,-0.173,-0.178,-0.172,-0.222
+VitalDB,Moirai-1.1-R,zero-shot,0.24,0.011,0.003,-0.143,-0.221,-0.182
+VitalDB,TFT,task-trained,0.81,0.781,0.698,0.701,0.191,0.303
+VitalDB,PatchTST,task-trained,0.243,0.215,0.206,0.173,0.04,0.118
+MOVER,TiRex-2,zero-shot,-0.086,-0.094,-0.096,-0.091,-0.087,-0.07
+MOVER,Chronos-Bolt,zero-shot,0.137,-0.046,-0.016,-0.096,-0.083,-0.146
+MOVER,TimesFM-2.5,zero-shot,-0.23,-0.205,-0.209,-0.215,-0.168,-0.155
+MOVER,Moirai-1.1-R,zero-shot,0.113,-0.14,-0.085,-0.226,-0.26,-0.242
+MOVER,TFT,task-trained,0.957,0.725,0.727,0.656,0.086,0.135
+MOVER,PatchTST,task-trained,0.382,0.256,0.263,0.223,0.035,0.038
