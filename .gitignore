@@ -43,3 +43,24 @@ __pycache__/
 *.pyc
 .DS_Store
 .ipynb_checkpoints/
+
+# LaTeX build leftovers
+*.aux
+*.out
+*.toc
+*.bbl
+*.blg
+
+# stray nested dir + root scratch figures (canonical figs live in manuscript/figs/)
+/tirex-2/
+/_*.png
+/Fig*.png
+
+# figure-editing source + build/local (not shared)
+manuscript/figs.pptx
+manuscript/*.log
+manuscript/*.aux
+manuscript/*.out
+manuscript/*.bbl
+manuscript/*.blg
+.claude/
