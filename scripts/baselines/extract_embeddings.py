@@ -264,10 +264,14 @@ def embed_timesfm(win, Lc, H, bs, device):
     if _DUMP:
         _dump_structure("timesfm", root); return np.empty((0, 0)), "dump"
     ctx = [np.asarray(w["past"][:, 0], dtype=np.float32) for w in win]
+    # timesfm decodes AUTOREGRESSIVELY: forecast(horizon=H) re-runs the transformer stack once per
+    # decode chunk (6x for our horizon -> ~10x slower than the others, and multi-fire capture whose
+    # row order is ambiguous). We only want the CONTEXT-ENCODING pass (the model's view of the
+    # observed window), which is independent of horizon. So decode a single minimal chunk: this
+    # produces exactly ONE fire of stacked_xf.19 per window (fires/batch == batch, clean reshape)
+    # and the same context embedding, in a fraction of the time.
     def run_batch(lo, hi):
-        model.forecast(horizon=H, inputs=ctx[lo:hi])
-    # timesfm decodes autoregressively -> stacked_xf.19 fires once per decode step; keep the FIRST
-    # fire (encoding of the observed context, before any future token is generated).
+        model.forecast(horizon=1, inputs=ctx[lo:hi])
     return run_capture(root, run_batch, len(win), bs, pin=PINNED_LAYER["timesfm"], reduce="first")
 
 
