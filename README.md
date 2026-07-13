@@ -6,6 +6,11 @@ Code and derived results for the manuscript:
 > hypotension prediction? A two-cohort benchmark and the role of covariate-awareness.**
 > Max Haberbusch, Medical University of Vienna.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21340658.svg)](https://doi.org/10.5281/zenodo.21340658)
+
+The frozen code + data snapshot for this work is archived on Zenodo:
+**https://doi.org/10.5281/zenodo.21340658**
+
 We benchmark four **zero-shot** time-series foundation models (TiRex-2, Chronos-Bolt, TimesFM-2.5,
 Moirai-1.1-R) against two **task-trained** baselines (Temporal Fusion Transformer, PatchTST) for
 forecasting mean arterial pressure (MAP) and predicting impending hypotension (MAP < 65 mmHg) over
@@ -40,7 +45,7 @@ The result files split into two tiers:
   (`results/tables/`) plus the aggregate CSVs/JSONs the notebook reads. A bare clone therefore already
   contains every table's numbers.
 - **Bulk results** (~1.4 GB: per-window forecasts, per-model embeddings, model checkpoints) are **not**
-  in git. They are archived on **Zenodo** and released with the paper (DOI added on acceptance).
+  in git. They are archived on **Zenodo**: https://doi.org/10.5281/zenodo.21340658
   Download that bundle and unpack it into the repository root so its `results/` files sit alongside the
   committed ones, next to `reproduce_paper.ipynb`.
 
@@ -93,3 +98,23 @@ scripts in `slurm/`.
 
 Code is released under the license in [`LICENSE.txt`](LICENSE.txt). Released result files are
 distributed under CC BY 4.0. The raw VitalDB and MOVER datasets remain under their respective terms.
+
+## Citation
+
+If you use this code or the archived results, please cite the Zenodo record:
+
+> Haberbusch, M. (2026). *Data and code for "Can a zero-shot time-series foundation model rival
+> task-trained models for intraoperative hypotension prediction? A two-cohort benchmark and the role
+> of covariate-awareness"* (v1.0.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21340658
+
+```bibtex
+@misc{HaberbuschZenodo2026,
+  author    = {Haberbusch, Max},
+  title     = {Data and code for ``Can a zero-shot time-series foundation model rival task-trained models for intraoperative hypotension prediction? A two-cohort benchmark and the role of covariate-awareness''},
+  year      = {2026},
+  publisher = {Zenodo},
+  version   = {1.0.0},
+  doi       = {10.5281/zenodo.21340658},
+  url       = {https://doi.org/10.5281/zenodo.21340658}
+}
+```
