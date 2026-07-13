@@ -52,9 +52,9 @@ task-trained models, and what makes such a model clinically useful. On a
 development cohort of 2{,}708 VitalDB cases we benchmarked four zero-shot
 foundation models (TiRex-2, Chronos-Bolt, TimesFM-2.5, Moirai-1.1-R)
 against task-trained Temporal Fusion Transformer (TFT) and PatchTST
-baselines evaluated by subject-level 5-fold out-of-fold cross-validation,
-forecasting MAP and predicting hypotension (MAP\,$<$\,65~mmHg) over
-1--15~min. TiRex-2 was the strongest zero-shot forecaster, leading every
+baselines. The task was to forecast MAP and predict hypotension
+(MAP\,$<$\,65~mmHg) over 1--15~min, with the trained baselines evaluated by
+subject-level 5-fold out-of-fold cross-validation. TiRex-2 was the strongest zero-shot forecaster, leading every
 other foundation model on hypotension discrimination from 3~min onward
 (e.g.\ area under the receiver operating characteristic curve, AUROC,
 $+0.007$ to $+0.008$ at 5~min; all $p<0.001$; a tie with TimesFM-2.5 at
@@ -63,30 +63,35 @@ even without the drug covariate, indicating it reflects base forecast
 quality rather than covariate access. Against the task-trained baselines,
 zero-shot TiRex-2 slightly but significantly exceeded TFT at 5~min (0.929 vs
 0.923, $p=0.002$) and was statistically indistinguishable from it at 7~min
-(0.905 vs 0.903, $p=0.337$), i.e.\ on par with TFT across the short-to-mid
-horizons (horizon-matched forecast mean absolute error, MAE, 6.20~mmHg at
-7~min, comparable to the 7~mmHg external 7-min MAE reported for a task-trained
-comparator, though the in-house trained baselines had lower MAE beyond 1~min),
-while the stronger PatchTST baseline led from 5~min onward. Of the
-four foundation models only TiRex-2 can condition on the known future
-drug-infusion plan; this covariate-awareness distinguished the exemplar and
-gave a small but significant accuracy gain concentrated where the infusion
-changes ($+1.15\%$ CRPS reduction, 95\% CI $+0.84$ to $+1.47$, at 7~min in
-transition windows), far smaller than the covariate dependence of the
-trained models. On an independent external cohort (MOVER, 1{,}827 cases;
+(0.905 vs 0.903, $p=0.337$)---on par with TFT across the short-to-mid
+horizons. Its horizon-matched forecast mean absolute error (MAE) was 6.20~mmHg
+at 7~min, comparable to the 7~mmHg external 7-min MAE reported for a
+task-trained comparator. The in-house trained baselines had lower MAE
+beyond 1~min, and the stronger PatchTST baseline led on discrimination from
+5~min onward. Among the
+four foundation models, TiRex-2 alone can condition on the known future
+drug-infusion plan; this gave a small but significant accuracy gain
+concentrated where the infusion changes ($+1.15\%$ CRPS reduction, 95\% CI
+$+0.84$ to $+1.47$, at 7~min in transition windows), far smaller than the
+covariate dependence of the trained models. Because TiRex-2 already led the
+other foundation models \emph{without} the covariate, its overall advantage
+reflects base forecast quality more than covariate access. On an independent external cohort (MOVER, 1{,}827 cases;
 invasive arterial MAP; 2--3$\times$ higher hypotension prevalence), the
 identical zero-shot model held AUROC\,$\geq$\,0.85 across horizons, its lead
 among foundation models reproduced, and it matched models trained on MOVER
-while outperforming models transferred from VitalDB. A naive persistence
-baseline, however, was highly competitive at short horizons---at MOVER's 60~s
-cadence it exceeded every learned model (foundation and task-trained) through
-5~min---so on the external cohort the distinctive value of a forecaster
+while outperforming models transferred from VitalDB. Discrimination was
+label-free; well-calibrated risk additionally required a small labelled
+sample from the target site to fit a post-hoc recalibration map. A naive persistence
+baseline, however, was highly competitive at short horizons: at MOVER's 60~s
+cadence it exceeded every learned model, foundation and task-trained, through
+5~min. On the external cohort, then, the distinctive value of a forecaster
 emerges only at the longer horizons ($\geq$10~min), where persistence
 degrades. Read against this floor, a single training-free foundation model is
-a competitive and portable paradigm for intraoperative haemodynamic
-prediction whose advantage over a trivial alarm is horizon-dependent, and
-conditioning on the planned intervention is the capability that distinguishes
-the best exemplar.
+competitive with task-trained models for intraoperative haemodynamic
+prediction---on par with TFT but behind the stronger PatchTST baseline at the
+longer horizons---with an advantage over a trivial alarm that is
+horizon-dependent. Conditioning on the planned intervention is associated with
+the leading model's edge, though the effect is small.
 \end{abstract}
 
 \section{Introduction}
@@ -412,10 +417,9 @@ Horizon (min) & TiRex-2 zero-shot [95\% CI] & TFT M1 [95\% CI] & PatchTST M1 [95
 
 \subsection{The role of covariate-awareness}
 
-Covariate-awareness is the capability that sets the leading exemplar apart:
-of the four foundation models, only TiRex-2 can condition on the known future
-drug-infusion plan, and it is also the strongest zero-shot forecaster. We
-quantified how much that capability actually contributes by comparing TiRex-2
+TiRex-2 is the one foundation model in the panel that can condition on the
+known future drug-infusion plan, so we asked how much this capability actually
+contributes---rather than assuming it explains its lead---by comparing TiRex-2
 with and without the covariate on identical windows. In transition windows at
 7~min---where the infusion changes over the horizon and the covariate can
 carry information---conditioning on the drug plan (effect-site concentration)
@@ -637,12 +641,17 @@ Horizon (min) & AUROC [95\% CI] & CRPS & MAE & prev.\% & AUROC [95\% CI] & CRPS 
 \subsection{What the zero-shot representations encode}
 
 A natural question is \emph{why} a model that never saw this task can rival one
-trained on it. We probed the internal representations of all six models on an
-identical 4{,}000-window subsample of each cohort, taking each model's pooled
-penultimate-layer activation as a per-window representation and asking what it
-linearly encodes (Methods). Three analyses converge on a single, initially
-counter-intuitive answer: \emph{zero-shot forecasting skill and linear
-representational structure are decoupled}.
+trained on it---and, for a prospective user, whether the risk these models
+produce can be read directly off an internal representation or only through
+their calibrated forecasts. We probed the internal representations of all six
+models on an identical 4{,}000-window subsample of each cohort, taking each
+model's pooled penultimate-layer activation as a per-window representation and
+asking what it linearly encodes (Methods). Three analyses converge on a single,
+initially counter-intuitive answer with a direct practical corollary:
+\emph{zero-shot forecasting skill and linear representational structure are
+decoupled}---so these models must be used as forecasters, through their
+multi-horizon predictions, not as feature extractors from which hypotension
+risk is read off linearly.
 
 First, the clinical label is only weakly and diffusely embedded in the zero-shot
 representations. Projected with UMAP \citep{McInnes2018} and coloured by impending hypotension
@@ -689,20 +698,16 @@ representation from which risk can be read off linearly.
 
 \section{Discussion}
 
-Across two cohorts, a general-purpose time-series foundation model, applied
-zero-shot, was a competitive paradigm for intraoperative MAP forecasting and
-impending-hypotension prediction. On the VitalDB development cohort the
-covariate-aware exemplar TiRex-2 was on par with task-trained TFT at the
-short-to-mid horizons (though below the stronger PatchTST from 5~min) and led every other zero-shot
-foundation model at all horizons; on the independent MOVER cohort the
-identical model held AUROC\,$\geq$\,0.85 across horizons, matched models
-trained on MOVER, and beat models transferred from VitalDB. The property
-that distinguished the leading exemplar was covariate-awareness---the
-ability to condition on the known future drug-infusion plan. We stress the
-scope of that claim: only TiRex-2 among the models tested is
-covariate-aware, so this is a statement about the best exemplar, not about
-foundation models as a class, three-quarters of which (the univariate
-comparators) cannot ingest a covariate at all.
+Across two cohorts, a general-purpose time-series foundation model applied
+zero-shot was competitive with task-trained models for intraoperative MAP
+forecasting and impending-hypotension prediction: on par with TFT at the
+short-to-mid horizons though behind the stronger PatchTST beyond 5~min, and
+ahead of every other zero-shot foundation model, with the ranking reproduced
+on the external MOVER cohort. We stress the scope of the covariate-awareness
+claim: only TiRex-2 among the models tested is covariate-aware, so this is a
+statement about the best exemplar, not about foundation models as a class,
+three-quarters of which (the univariate comparators) cannot ingest a
+covariate at all.
 
 \paragraph{Relation to the state of the art.} Our work is positioned
 directly against two recent task-trained models. Kapral et al.\ forecast the
@@ -792,13 +797,28 @@ $\pm$ propofol); continuous vasopressor-infusion channels are near-absent in
 VitalDB, and bolus drugs are unrecorded \citep{Kapral2024}, so the
 intervention$\rightarrow$response relationship we model is anaesthetic-induced
 blood-pressure change. Third, both cohorts are retrospective; VitalDB is
-single-centre and selected for infusion cases. Fourth, the foundation models
+single-centre and selected for infusion cases. Both cohorts also derive MAP
+from an \emph{invasive arterial line} in the operating room; we have not
+demonstrated portability to non-invasive (oscillometric) blood pressure or to
+other care settings---the intensive care unit, the ward, the emergency
+department or the post-anaesthesia care unit---where signal cadence, noise,
+artefact profile and hypotension epidemiology all differ, and where the
+availability and meaning of the drug-infusion covariate would change. Claims of
+portability here are therefore between two intraoperative arterial-line cohorts,
+not across monitoring modalities or settings. Fourth, the foundation models
 are pretrained on large, undisclosed time-series corpora, and we cannot rule
-out that public physiological datasets---including VitalDB itself---were seen
-during pretraining; while the zero-shot protocol uses no task labels and no
-fine-tuning, and the external MOVER cohort (a distinct, access-controlled
-source) reproduces the ranking, a fully contamination-free evaluation would
-require held-out data postdating each model's pretraining cut-off. Fifth,
+out that public physiological datasets---including VitalDB, which is openly
+downloadable and has appeared in prior time-series collections---were seen
+during pretraining. Two considerations bound this concern but do not
+eliminate it. The task labels (hypotension events) and the forecasting
+protocol are ours and were never used to train the models, so any exposure
+would be to the raw MAP series, not to the supervised target; and the ranking
+reproduces on MOVER, an access-controlled cohort released after several of
+these models' pretraining windows and far less likely to have been ingested.
+Even so, a fully contamination-free evaluation would require held-out data
+postdating every model's pretraining cut-off, which the model providers do
+not disclose precisely; we therefore report possible pretraining exposure as
+an unquantified but bounded risk rather than a resolved non-issue. Fifth,
 hypotension labels are defined at each cohort's native cadence (15~s on
 VitalDB, 60~s on MOVER); the coarser MOVER grid can miss brief sub-minute
 excursions and merge closely spaced events, so prevalence and operating
@@ -1020,7 +1040,13 @@ Tables~\ref{tab:classification} and~\ref{tab:matched} and in
 Fig.~\ref{fig:sota}, clearly marked as literature values. Where a value was
 reported only graphically---specifically the mean absolute error curve of
 Kapral et al.---it was recovered from the published figure using a
-plot-digitization tool \citep{WebPlotDigitizer}.
+plot-digitization tool \citep{WebPlotDigitizer}. These are
+\emph{contextual} comparisons, not head-to-head benchmarks: the two studies
+differ from ours in preprocessing, patient selection, outcome definition,
+cohort construction and evaluation protocol, so the absolute values are not
+strictly commensurable and should be read as external points of reference
+that situate our results within the reported literature, not as a controlled
+comparison on identical data.
 
 \subsection{Representation analysis}
 
