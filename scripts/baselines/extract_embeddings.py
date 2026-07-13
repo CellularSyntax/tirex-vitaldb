@@ -418,11 +418,15 @@ def main():
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--dump-structure", action="store_true",
                     help="print the model's named-module tree and exit (to pin the embedding layer)")
+    ap.add_argument("--targets-only", action="store_true",
+                    help="build the identical seeded windows and write continuous MAP targets "
+                         "(future-MAP mean/min/slope + last context MAP) to results/embeddings_targets_"
+                         "<stem>.npz, then exit -- no model loaded, row-aligned with every embeddings_*.npz")
     args = ap.parse_args()
     global _DUMP
     _DUMP = args.dump_structure
 
-    if str(args.device).startswith("cuda"):
+    if str(args.device).startswith("cuda") and not args.targets_only:
         import torch
         if not torch.cuda.is_available():
             raise RuntimeError(
@@ -463,6 +467,35 @@ def main():
     win = [win[i] for i in keep]
     print(f"[emb] model={args.model} kept {len(win)} subsample windows Lc={Lc} H={H} dt={dt} tag={tag}",
           flush=True)
+
+    if args.targets_only:
+        # Continuous hemodynamic targets for the construct-valid trajectory probe. Row-aligned with
+        # every embeddings_<model>_<stem>.npz because we reuse the identical seeded window subsample.
+        caseid = np.array([w["caseid"] for w in win])
+        t0arr = np.array([w["t0"] for w in win], dtype=np.int64)
+        stratum = np.array([w["stratum"] for w in win])
+        h5 = int(5 * 60 / dt)
+        def _slope(y):                                        # per-minute slope via least squares
+            y = np.asarray(y, float); m = np.isfinite(y)
+            if m.sum() < 2: return np.nan
+            x = np.arange(len(y))[m] * dt / 60.0
+            return float(np.polyfit(x, y[m], 1)[0])
+        truth = [np.asarray(w["truth"], float) for w in win]  # future MAP over H
+        last_map = np.array([float(w["past"][-1, 0]) for w in win])          # MAP at t0 (context end)
+        fut5_mean = np.array([np.nanmean(t[:h5]) for t in truth])
+        fut5_min  = np.array([np.nanmin(t[:h5])  for t in truth])
+        futH_mean = np.array([np.nanmean(t)      for t in truth])
+        futH_min  = np.array([np.nanmin(t)       for t in truth])
+        slope5    = np.array([_slope(t[:h5]) for t in truth])
+        slopeH    = np.array([_slope(t)      for t in truth])
+        os.makedirs("results", exist_ok=True)
+        out = f"results/embeddings_targets_{stem}.npz"
+        np.savez_compressed(out, caseid=caseid, t0=t0arr, stratum=stratum,
+                            last_map=last_map, fut5_mean=fut5_mean, fut5_min=fut5_min,
+                            futH_mean=futH_mean, futH_min=futH_min, slope5=slope5, slopeH=slopeH)
+        print(f"[emb] targets-only wrote {out} n={len(win)} "
+              f"(last_map/fut5_mean/fut5_min/futH_mean/futH_min/slope5/slopeH)", flush=True)
+        return
 
     if args.model == "tirex2":
         recs = {}
