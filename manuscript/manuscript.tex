@@ -639,7 +639,7 @@ counter-intuitive answer: \emph{zero-shot forecasting skill and linear
 representational structure are decoupled}.
 
 First, the clinical label is only weakly and diffusely embedded in the zero-shot
-representations. Projected with UMAP and coloured by impending hypotension
+representations. Projected with UMAP \citep{McInnes2018} and coloured by impending hypotension
 (Supplementary Fig.~\ref{fig:umap_vitaldb}), the label appears as a gradient
 rather than as separated clusters, and a subject-grouped linear probe quantifies
 its strength (Supplementary Table~\ref{tab:probe_hypo}). The task-trained models
@@ -1034,7 +1034,7 @@ dimension 64). All six models were run on the identical seeded 4{,}000-window
 subsample per cohort (stratified by window stratum and 5-min hypotension label),
 so the resulting representations are row-aligned across models. Linear
 separability of impending hypotension was assessed with an $L_2$-regularised
-logistic probe under 5-fold subject-grouped cross-validation (no subject shared
+logistic probe (scikit-learn \citep{Pedregosa2011}) under 5-fold subject-grouped cross-validation (no subject shared
 between train and test), reported as AUROC and AUPRC; continuous MAP quantities
 were probed analogously with ridge regression ($R^2$). Discrete structure was
 summarised by a 2-means split of each representation, its silhouette, and its
