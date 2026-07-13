@@ -352,18 +352,19 @@ def _run_baseline(model, ck, win, device, target_module, pool_fn, path_label):
 def embed_tft(win, Lc, H, bs, device, match_tirex):
     """Trained TFT (task-trained reference). Penultimate = pos_grn output [B,H,d=64], mean over the
     horizon positions -> one vector per window (analogous to the FM encoder pooling)."""
-    model, ck, _ = _load_baseline_ckpt("tft", match_tirex)
+    model, ck, ckp = _load_baseline_ckpt("tft", match_tirex)
     if _DUMP:
         _dump_structure("tft", model); return np.empty((0, 0)), "dump"
     return _run_baseline(model, ck, win, device, model.pos_grn,
-                         lambda x, b: x.mean(dim=1), "TFT.pos_grn::mean_over_horizon")
+                         lambda x, b: x.mean(dim=1),
+                         f"TFT.pos_grn::mean_over_horizon <- {os.path.basename(ckp)}")
 
 
 def embed_patchtst(win, Lc, H, bs, device, match_tirex):
     """Trained PatchTST (task-trained reference). Penultimate = norm output, shape [B*C, n_patch, d]
     in b-major order; reshape to [B,C,n_patch,d] and mean over channels+patches -> [B,d] (d=d_model,
     64 in our config -- the class default 96 is overridden by train.py --d-model 64)."""
-    model, ck, _ = _load_baseline_ckpt("patchtst", match_tirex)
+    model, ck, ckp = _load_baseline_ckpt("patchtst", match_tirex)
     if _DUMP:
         _dump_structure("patchtst", model); return np.empty((0, 0)), "dump"
     C = model.C
@@ -371,7 +372,8 @@ def embed_patchtst(win, Lc, H, bs, device, match_tirex):
     def pool(x, b):
         d = x.shape[-1]
         return x.reshape(b, C, -1, d).mean(dim=(1, 2))     # b-major [B,C,n_patch,d] -> [B,d]
-    return _run_baseline(model, ck, win, device, model.norm, pool, "PatchTST.norm::mean_over_chan_patch")
+    return _run_baseline(model, ck, win, device, model.norm, pool,
+                         f"PatchTST.norm::mean_over_chan_patch <- {os.path.basename(ckp)}")
 
 
 RUNNERS = {"tirex2": embed_tirex2, "chronos": embed_chronos,
