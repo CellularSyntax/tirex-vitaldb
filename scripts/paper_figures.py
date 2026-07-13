@@ -731,7 +731,7 @@ def figure_zeroshot(tag, save="Fig3_zeroshot_tsfm", cohort_note=None):
     axd.plot(hs, prev, ":", color=S.C["persist"], lw=1.0, label="prevalence (chance)")
     axd.set_xticks(hs); axd.set_ylim(0, 1)
     S.finish(axd, "forecast horizon (min)", "AUPRC", "Precision–recall")
-    axd.legend(loc="upper right", fontsize=5.4); S.panel_letter(axd, "d")
+    axd.legend(loc="lower right", fontsize=5.4); S.panel_letter(axd, "d")
 
     if cohort_note:
         fig.suptitle(cohort_note, y=0.99, fontsize=8, fontweight="bold")
@@ -878,7 +878,7 @@ def figure4(tag):
     from matplotlib.lines import Line2D
     mh = [Line2D([], [], color=col, marker=mk, ms=4, lw=(2.0 if tir else 1.1), label=disp)
           for disp, mt, col, tir, mk in MODELS]
-    fig.legend(handles=mh, loc="lower center", ncol=4, fontsize=6.2, frameon=False, bbox_to_anchor=(0.42, 0.012))
+    fig.legend(handles=mh, loc="lower center", ncol=4, fontsize=6.2, frameon=False, bbox_to_anchor=(0.42, 0.002))
 
     # d — subgroup forest (tall panel): TiRex-2 with CI + comparators overlaid per subgroup
     FOREST_COMP = [("TFT", f"baseline-tft_{tag}", "#566573", "s"),
@@ -906,12 +906,13 @@ def figure4(tag):
             if os.path.exists(p):
                 mcomp.append((disp, json.load(open(p)), col, mk))
         _forest(ax_forest_mover, sg_mover, mcomp,
-                title="Subgroup robustness — MOVER (external)", show_legend=False)
+                title="Subgroup robustness — MOVER (external)", show_legend=False,
+                ann_dx=-0.034)  # shift the overall-AUROC annotation ~10 px left so it clears the dashed line
 
     S.save_fig(fig, "Fig5_clinical_robustness")
 
 
-def _forest(ax, sg, comparators=None, title="Subgroup robustness", show_legend=True):
+def _forest(ax, sg, comparators=None, title="Subgroup robustness", show_legend=True, ann_dx=0.0):
     """Forest with all text on the RIGHT (outer figure margin) so nothing spills into
     the neighbouring panels on the left. TiRex-2 is the CI point; each comparator (trained
     baseline + best zero-shot foil) is overlaid as a bare marker at the same row, so the
@@ -946,13 +947,20 @@ def _forest(ax, sg, comparators=None, title="Subgroup robustness", show_legend=T
             yticks.append(y); ylabels.append(f"{s['level']} (n={s.get('n_cases')})  {au:.3f}")
         y += 1
     ax.axvline(overall["auroc"], color=S.C["persist"], lw=0.9, ls="--")
-    ax.text(0.02, 0.97, f"– –  TiRex-2 overall {overall['auroc']:.3f}", transform=ax.transAxes,
+    ax.text(0.02 + ann_dx, 0.97, f"– –  TiRex-2 overall {overall['auroc']:.3f}", transform=ax.transAxes,
             fontsize=5.4, color="#555", ha="left", va="top",
             bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85), zorder=7)
     ax.set_yticks(yticks); ax.set_yticklabels(ylabels, fontsize=5.6)
     ax.yaxis.tick_right()                             # tick labels on the right
     ax.set_ylim(-0.6, y-0.4); ax.set_xlim(0.83, 0.98); ax.set_xticks([0.85, 0.90, 0.95])
     ax.set_xlabel("hypotension AUROC @5 min"); ax.set_title(title, loc="center")
+    # The subgroup labels sit in the right margin, so the visual panel is much wider than the
+    # plotting axis. Centre the title over the full content (plot box + right-side labels), measured
+    # after a draw, so it reads as centred rather than shifted toward the plot.
+    fig = ax.figure; fig.canvas.draw(); _r = fig.canvas.get_renderer()
+    _right = max((ax.transAxes.inverted().transform([[l.get_window_extent(_r).x1, 0]])[0][0]
+                  for l in ax.get_yticklabels()), default=1.0)
+    ax.title.set_x(_right / 2.0)
     ax.spines["left"].set_visible(False); ax.spines["right"].set_visible(True)
     ax.tick_params(axis="y", length=0)
     if cmaps and show_legend:

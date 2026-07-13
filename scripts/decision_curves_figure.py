@@ -100,8 +100,7 @@ def main():
                 ax.set_ylabel("Net benefit", fontsize=9)
             if ri == 1:
                 ax.set_xlabel("Threshold probability", fontsize=9)
-            ax.grid(alpha=0.25)
-            if ri == 0 and ci == 0:
+            if ri == 0 and ci == 2:
                 ax.legend(fontsize=7, loc="upper right")
     fig.suptitle("Decision-curve analysis: recalibrated zero-shot TiRex-2 vs treat-all / treat-none",
                  fontsize=11)
