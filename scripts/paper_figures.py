@@ -234,8 +234,12 @@ def _funnel(ax, steps, x0, x1, header=None, fs=6.4):
         ax.text(xc, (top + bot) / 2, txt, transform=ax.transAxes, ha="center", va="center",
                 fontsize=fs, zorder=3)
         if i < n - 1:
-            ax.annotate("", xy=(xc, bot - gap + 0.006), xytext=(xc, bot - 0.004),
-                        xycoords="axes fraction", arrowprops=dict(arrowstyle="-|>", color="#666", lw=1.0))
+            # Anchor the connector exactly at the two box edges (tail at this box's bottom, head at the
+            # next box's top) so it spans the full gap and touches both boxes regardless of panel aspect.
+            ax.annotate("", xy=(xc, bot - gap), xytext=(xc, bot),
+                        xycoords="axes fraction",
+                        arrowprops=dict(arrowstyle="-|>", color="#666", lw=1.0,
+                                        shrinkA=0.0, shrinkB=0.0))
 
 
 def _cohort_flow(ax, flow, prim, hyp, n_cohort, mover=None):
