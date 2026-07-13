@@ -1,115 +1,154 @@
 """Extract per-window encoder embeddings from each zero-shot foundation model.
 
 Representation-explainability layer (supplementary). For a fixed, model-shared, stratified
-SUBSAMPLE of forecast windows (identical origins across models), we capture each model's ENCODER
+SUBSAMPLE of forecast windows (identical origins across models), we capture each model's internal
 hidden state at the forecast origin and mean-pool it to one vector per window. This is a
 representation of the recent hemodynamic trajectory (the model's view at decision time), NOT a
 patient-level disease encoding -- these are time-series forecasters. Downstream we UMAP-visualise,
 linear-probe, and RSA-compare these vectors (scripts/explain_representations.py).
 
-We subsample because (i) RSA builds an N x N dissimilarity matrix (all ~285k windows is intractable
-and unnecessary) and (ii) a few thousand windows give stable UMAP/probe/RSA estimates. Subsampling
-is seeded and stratified by (stratum x 5-min hypotension label) so the sample is balanced, and the
-SAME (caseid,t0) set is used for every model so the four embeddings are row-aligned for RSA.
+We subsample because RSA builds an N x N dissimilarity matrix (all ~285k windows is intractable
+and unnecessary); a few thousand windows give stable UMAP/probe/RSA estimates. Subsampling is
+seeded and stratified by (stratum x 5-min hypotension label), and the SAME (caseid,t0) set is used
+for every model so the four embeddings are row-aligned for RSA.
 
-Each architecture exposes its embedding differently, so we hook the encoder trunk and mean-pool.
-Every model is driven in explicit fixed-size batches (bs windows per forward), so accumulate-then-
-concatenate reproduces window order exactly -- including Moirai, whose GluonTS predictor otherwise
-hides batch boundaries (we feed it one sub-ListDataset per batch). The hook path actually used is
-recorded in the meta JSON for provenance.
+AUTODISCOVERY of the embedding module (why -- the four architectures name their internals
+differently and can't be introspected off the GPU): on the FIRST batch we attach lightweight
+probe hooks to every parameterised submodule, record which ones emit a poolable hidden state
+([B,S,D] or [B,D] float, 16<=D<=4096), and pick the best encoder-like module by a name+depth
+heuristic. We then attach a single capture hook to that module and run all batches. Hidden states
+are unwrapped from HuggingFace ModelOutput objects / dicts / tuples. The chosen module path and
+its dim are written to the meta JSON for provenance -- verify these look like real encoder outputs
+before trusting the analyses.
+
+Every model is driven in explicit fixed-size batches so accumulate-then-concatenate reproduces
+window order exactly, including Moirai (one sub-ListDataset per batch).
 
 Writes results/embeddings_<model>_<tag>.npz: emb [N,D] float32, caseid [N], t0 [N] int,
 stratum [N] str, hypo_event_5 [N] int, t_event_65 [N] float, row-aligned across models.
 
-Run (GPU) from project root, one model at a time:
-    PYTHONPATH=scripts:datasets/vitaldb python scripts/baselines/extract_embeddings.py \
-        --model chronos --match-tirex results/ablation_windows_all2873.csv --device cuda
+Run (GPU) from project root, one model at a time -- see slurm/extract_embeddings.sbatch.
 """
 from __future__ import annotations
 import argparse, csv, json, os, time
 import numpy as np
 
 
-def _pool(t):
-    """Mean-pool a hidden-state tensor to [B, D]. Accepts [B,S,D] or [B,D], torch or numpy."""
+def _extract_hidden(out):
+    """Unwrap a module output to a float hidden-state tensor, or None."""
     import torch
-    if isinstance(t, (list, tuple)):
-        t = t[0]
-    if not torch.is_tensor(t):
-        t = torch.as_tensor(t)
-    t = t.detach().float().cpu()
-    if t.dim() == 3:
-        return t.mean(dim=1).numpy()
-    if t.dim() == 2:
-        return t.numpy()
-    return t.reshape(t.shape[0], -1).numpy()
+    if torch.is_tensor(out):
+        return out
+    for attr in ("last_hidden_state", "hidden_states"):
+        v = getattr(out, attr, None)
+        if torch.is_tensor(v):
+            return v
+        if isinstance(v, (list, tuple)) and v and torch.is_tensor(v[-1]):
+            return v[-1]
+    if isinstance(out, dict):
+        for k in ("last_hidden_state", "hidden_states"):
+            v = out.get(k)
+            if torch.is_tensor(v):
+                return v
+    if isinstance(out, (list, tuple)):
+        for v in out:
+            if torch.is_tensor(v) and v.dim() >= 2 and v.is_floating_point():
+                return v
+    return None
 
 
-class HookCapture:
-    """Forward hook that ACCUMULATES each forward's pooled output (one entry per batch)."""
+def _pool(h):
+    """Mean-pool a hidden-state tensor [B,S,D] or [B,D] to [B,D] numpy."""
+    h = h.detach().float().cpu()
+    if h.dim() == 3:
+        return h.mean(dim=1).numpy()
+    if h.dim() == 2:
+        return h.numpy()
+    return h.reshape(h.shape[0], -1).numpy()
+
+
+def _poolable(h, min_dim=16, max_dim=4096):
+    return (h is not None and h.is_floating_point() and h.dim() in (2, 3)
+            and min_dim <= h.shape[-1] <= max_dim)
+
+
+def _choose_target(meta):
+    """meta: name -> (ndim, D). Prefer an 'encoder' stack output; else the deepest
+    block/layer module; else the largest-D module. Returns the chosen name."""
+    if not meta:
+        return None
+    def depth(n): return n.count(".")
+    enc = {n: v for n, v in meta.items() if n.endswith("encoder") or n.endswith("encoders")}
+    if enc:
+        return max(enc, key=lambda n: (meta[n][1], -depth(n)))   # widest, shallowest encoder
+    blk = {n: v for n, v in meta.items()
+           if any(k in n.lower() for k in ("block", "layer", "xlstm"))}
+    if blk:
+        return max(blk, key=lambda n: (depth(n), meta[n][1]))    # deepest (last) block, then widest
+    return max(meta, key=lambda n: meta[n][1])                    # fallback: widest anything
+
+
+class _Capture:
     def __init__(self):
-        self.batches = []
-        self.handle = None
-        self.path = None
-
+        self.batches = []; self.handle = None; self.path = None
     def attach(self, module, path):
-        def hook(_m, _inp, out):
-            self.batches.append(_pool(out))
-        self.handle = module.register_forward_hook(hook)
-        self.path = path
-        return self
-
-    def reset(self):
-        self.batches = []
-
+        def hook(_m, _i, out):
+            h = _extract_hidden(out)
+            if h is not None:
+                self.batches.append(_pool(h))
+        self.handle = module.register_forward_hook(hook); self.path = path; return self
     def stack(self):
         return np.concatenate(self.batches, axis=0) if self.batches else np.empty((0, 0))
-
     def detach(self):
-        if self.handle is not None:
-            self.handle.remove()
+        if self.handle: self.handle.remove()
 
 
-def _largest_encoderish(root):
-    """Fallback: the encoder/block container with the most parameters."""
-    import torch.nn as nn
-    best, best_n, best_name = None, -1, None
+def run_capture(root, run_batch, n, bs):
+    """Discover the embedding module on batch 0, then capture it across all n windows.
+    run_batch(lo, hi) must trigger a forward over windows [lo:hi]. Returns (emb[N,D], path)."""
+    # ---- discovery pass (probe every parameterised submodule on the first batch) ----
+    meta = {}
+    handles = []
+    def mk_probe(name):
+        def probe(_m, _i, out):
+            if name in meta:
+                return
+            h = _extract_hidden(out)
+            if _poolable(h):
+                meta[name] = (h.dim(), int(h.shape[-1]))
+        return probe
     for name, m in root.named_modules():
-        n = sum(p.numel() for p in m.parameters())
-        if n <= 0:
+        if name == "" or not any(True for _ in m.parameters(recurse=False)):
             continue
-        if isinstance(m, nn.ModuleList) or "encoder" in name.lower() or "block" in name.lower():
-            if n > best_n:
-                best, best_n, best_name = m, n, name
-    return best, best_name
+        handles.append(m.register_forward_hook(mk_probe(name)))
+    run_batch(0, min(bs, n))
+    for h in handles:
+        h.remove()
+    target = _choose_target(meta)
+    if target is None:
+        raise RuntimeError("autodiscovery found no poolable hidden state; inspect the model")
+    module = dict(root.named_modules())[target]
+    print(f"[emb] discovered {len(meta)} candidate modules; target='{target}' dim={meta[target][1]}",
+          flush=True)
+    # ---- capture pass (single hook on the chosen module, all batches incl. the first) ----
+    cap = _Capture().attach(module, f"{target}[D={meta[target][1]}]")
+    for lo in range(0, n, bs):
+        run_batch(lo, min(lo + bs, n))
+    cap.detach()
+    return cap.stack(), cap.path
 
 
-def _find_encoder(root, suffixes=("encoder",)):
-    for name, m in root.named_modules():
-        if any(name.endswith(s) for s in suffixes):
-            return m, name
-    return _largest_encoderish(root)
-
-
-# ---- per-model runners: driven in fixed-size batches; return emb[N,D], hook_path ----
+# ---- per-model runners: build (root, run_batch) and delegate to run_capture ----
 
 def embed_tirex2(win, Lc, H, bs, device):
     import phase3_ablation as P
     from tirex2 import load_model
     model = load_model("NX-AI/TiRex-2", device=device)
-    core = getattr(model, "model", model)
-    target, path = None, None
-    for name, m in core.named_modules():
-        if name.endswith("blocks") or "bi_xlstm" in name.lower():
-            target, path = m, name
-    if target is None:
-        target, path = _largest_encoderish(core)
-    cap = HookCapture().attach(target, path or "tirex2:fallback")
+    root = getattr(model, "model", model)
     items = [P.build_ts(w["_rec"], w["t0"], Lc, H, True, True) for w in win]
-    for i in range(0, len(items), bs):
-        model.forecast(items[i:i+bs], prediction_length=H, output_type="numpy")
-    cap.detach()
-    return cap.stack(), cap.path
+    def run_batch(lo, hi):
+        model.forecast(items[lo:hi], prediction_length=H, output_type="numpy")
+    return run_capture(root, run_batch, len(win), bs)
 
 
 def embed_chronos(win, Lc, H, bs, device):
@@ -117,15 +156,12 @@ def embed_chronos(win, Lc, H, bs, device):
     from chronos import BaseChronosPipeline
     pipe = BaseChronosPipeline.from_pretrained("amazon/chronos-bolt-base",
                                                device_map=device, torch_dtype=torch.float32)
-    inner = getattr(pipe, "model", pipe)
-    target, path = _find_encoder(inner)
-    cap = HookCapture().attach(target, path or "chronos:fallback")
-    contexts = [w["past"][:, 0].astype(np.float32) for w in win]
-    for i in range(0, len(contexts), bs):
-        ctx = [torch.tensor(c) for c in contexts[i:i+bs]]
-        pipe.predict_quantiles(ctx, prediction_length=H, quantile_levels=[0.1, 0.5, 0.9])
-    cap.detach()
-    return cap.stack(), cap.path
+    root = getattr(pipe, "model", pipe)
+    ctx = [w["past"][:, 0].astype(np.float32) for w in win]
+    def run_batch(lo, hi):
+        pipe.predict_quantiles([torch.tensor(c) for c in ctx[lo:hi]],
+                               prediction_length=H, quantile_levels=[0.1, 0.5, 0.9])
+    return run_capture(root, run_batch, len(win), bs)
 
 
 def embed_timesfm(win, Lc, H, bs, device):
@@ -138,14 +174,11 @@ def embed_timesfm(win, Lc, H, bs, device):
     max_ctx = max(512, (Lc + 31) // 32 * 32)
     model.compile(timesfm.ForecastConfig(max_context=max_ctx, max_horizon=max(320, H),
                                          normalize_inputs=True, use_continuous_quantile_head=True))
-    core = getattr(model, "model", model)
-    target, path = _largest_encoderish(core)
-    cap = HookCapture().attach(target, path or "timesfm:fallback")
-    contexts = [np.asarray(w["past"][:, 0], dtype=np.float32) for w in win]
-    for i in range(0, len(contexts), bs):
-        model.forecast(horizon=H, inputs=contexts[i:i+bs])
-    cap.detach()
-    return cap.stack(), cap.path
+    root = getattr(model, "model", model)
+    ctx = [np.asarray(w["past"][:, 0], dtype=np.float32) for w in win]
+    def run_batch(lo, hi):
+        model.forecast(horizon=H, inputs=ctx[lo:hi])
+    return run_capture(root, run_batch, len(win), bs)
 
 
 def embed_moirai(win, Lc, H, bs, device):
@@ -156,39 +189,17 @@ def embed_moirai(win, Lc, H, bs, device):
     model = MoiraiForecast(module=module, prediction_length=H, context_length=Lc or 512,
                            patch_size="auto", num_samples=100, target_dim=1,
                            feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0)
-    target, path = _find_encoder(module)
-    cap = HookCapture().attach(target, path or "moirai:fallback")
     try:
         predictor = model.create_predictor(batch_size=bs, device=device)
     except TypeError:
         predictor = model.to(device).create_predictor(batch_size=bs)
-    contexts = [w["past"][:, 0].astype(np.float32) for w in win]
-    # Feed ONE fixed-size batch at a time as its own ListDataset, and reduce that batch's
-    # (possibly multiple) forward-fires to a single pooled vector per window by averaging the
-    # per-forward captures for the block. Because the sampler may fire the encoder once per batch,
-    # we exhaust the predictor for each chunk and take the mean over fires, giving [chunk, D].
-    embs = []
-    for i in range(0, len(contexts), bs):
-        chunk = contexts[i:i+bs]
-        ds = ListDataset([{"target": c, "start": pd.Period("2020-01-01", freq="s")} for c in chunk],
-                         freq="s")
-        cap.reset()
-        _ = list(predictor.predict(ds))          # exhaust -> fires the hook for this chunk
-        b = cap.batches
-        if not b:
-            raise RuntimeError("moirai: encoder hook never fired; check hook path")
-        # concatenate fires; if the encoder fired once, this is [chunk,D]; if multiple fires stacked
-        # the same windows (sampling), rows > chunk -> average the fires back to [chunk,D]
-        stacked = np.concatenate(b, axis=0)
-        if stacked.shape[0] == len(chunk):
-            embs.append(stacked)
-        elif stacked.shape[0] % len(chunk) == 0:
-            k = stacked.shape[0] // len(chunk)
-            embs.append(stacked.reshape(k, len(chunk), -1).mean(axis=0))
-        else:
-            raise RuntimeError(f"moirai: {stacked.shape[0]} pooled rows for chunk {len(chunk)}")
-    cap.detach()
-    return np.concatenate(embs, axis=0), cap.path
+    ctx = [w["past"][:, 0].astype(np.float32) for w in win]
+    def run_batch(lo, hi):
+        ds = ListDataset([{"target": c, "start": pd.Period("2020-01-01", freq="s")}
+                          for c in ctx[lo:hi]], freq="s")
+        list(predictor.predict(ds))
+    # hook the MoiraiModule (the nn.Module the predictor calls under the hood)
+    return run_capture(module, run_batch, len(win), bs)
 
 
 RUNNERS = {"tirex2": embed_tirex2, "chronos": embed_chronos,
@@ -196,7 +207,6 @@ RUNNERS = {"tirex2": embed_tirex2, "chronos": embed_chronos,
 
 
 def stratified_subsample(win, max_windows, seed):
-    """Seeded stratified subsample by (stratum, 5-min hypo label), preserving proportions."""
     if len(win) <= max_windows:
         return list(range(len(win)))
     rng = np.random.default_rng(seed)
@@ -204,7 +214,7 @@ def stratified_subsample(win, max_windows, seed):
     for i, w in enumerate(win):
         keys.setdefault((w["stratum"], int(w["_hypo5"])), []).append(i)
     idx = []
-    for k, members in keys.items():
+    for members in keys.values():
         take = max(1, round(max_windows * len(members) / len(win)))
         members = np.array(members)
         idx.extend(members[rng.permutation(len(members))[:take]].tolist())
@@ -220,10 +230,8 @@ def main():
     ap.add_argument("--eval-config", default="configs/eval.yaml")
     ap.add_argument("--model", required=True, choices=list(RUNNERS))
     ap.add_argument("--cov", default="ce", choices=list(P.COV_PRESETS))
-    ap.add_argument("--match-tirex", required=True,
-                    help="a TiRex ablation_windows_*.csv; locks cohort + window origins")
-    ap.add_argument("--max-windows", type=int, default=4000,
-                    help="stratified subsample size (RSA is O(N^2); 4000 is ample)")
+    ap.add_argument("--match-tirex", required=True)
+    ap.add_argument("--max-windows", type=int, default=4000)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--max-origins", type=int, default=20)
     ap.add_argument("--device", default="cuda")
@@ -232,9 +240,6 @@ def main():
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
-    # Fail fast on a bad GPU node BEFORE the (minutes-long) window build, so a transient
-    # container GPU-bind failure costs seconds, not a wasted window build. (Job 534847 built
-    # 4000 windows, then died at load_model on a node where CUDA wasn't visible.)
     if str(args.device).startswith("cuda"):
         import torch
         if not torch.cuda.is_available():
@@ -267,10 +272,9 @@ def main():
                                 quiet=args.quiet)
     for w in win:
         w["_hypo5"] = P.hypo_event(w["truth"][:h5], min_run, P.HYPO_THR)
-    # seeded stratified subsample -- IDENTICAL across models (same cases/origins/seed -> same win order)
     keep = stratified_subsample(win, args.max_windows, args.seed)
     win = [win[i] for i in keep]
-    print(f"[emb] model={args.model} kept {len(win)} of subsample windows Lc={Lc} H={H} dt={dt} tag={tag}",
+    print(f"[emb] model={args.model} kept {len(win)} subsample windows Lc={Lc} H={H} dt={dt} tag={tag}",
           flush=True)
 
     if args.model == "tirex2":
