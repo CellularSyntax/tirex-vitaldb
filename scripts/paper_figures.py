@@ -383,7 +383,10 @@ def figure2(tag):
     handles = [Line2D([], [], color=S.C["M1"], marker="o", ls="none", label="TiRex-2 (zero-shot)")]
     handles += [Line2D([], [], color=m["col"], marker=m["mk"], ls="none", label=f"{m['disp']} (trained)")
                 for m in MATCHED_BASELINES if m["disp"] in seen]
-    c.legend(handles=handles, loc="lower right", fontsize=5.0); S.panel_letter(c, "d")
+    c.legend(handles=handles, loc="lower right", fontsize=5.0,
+             bbox_to_anchor=(1.044, 0.0), bbox_transform=c.transAxes,
+             borderaxespad=0.0)  # nudge ~15 px right so it clears the plotted points
+    S.panel_letter(c, "d")
 
     # d — instantaneous MAE vs Kapral (external / internal), TiRex vs trained baselines
     d = axs["d"]
