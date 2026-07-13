@@ -172,6 +172,7 @@ def figure1(tag):
         mp = load_primary("mover_art")
         mover["_n_windows"] = mp["n_windows"] if mp else mover.get("n_cached", 0)
     _cohort_flow(ax_flow, flow, prim, hyp, n_cohort, mover)
+    ax_flow.set_title("Cohort curation", loc="center")
     S.panel_letter(ax_flow, "b", dx=-0.10, dy=1.06)
 
     # c — three representative forecasts (steady / transition / hypotensive onset)
@@ -317,9 +318,9 @@ def figure2(tag):
     # caption rather than drawn as an empty bar in e.)
     fig, axs = plt.subplot_mosaic([["a", "a", "a", "d", "d", "d"],
                                    ["b", "b", "c", "c", "e", "e"]],
-                                  figsize=(S.W2 * 1.34, S.W2 * 0.64),
-                                  gridspec_kw=dict(hspace=0.5, wspace=1.0,
-                                                   left=0.06, right=0.985, top=0.92, bottom=0.11))
+                                  figsize=(S.W2 * 1.34, S.W2 * 0.96),
+                                  gridspec_kw=dict(hspace=0.5, wspace=1.6,
+                                                   left=0.06, right=0.985, top=0.93, bottom=0.10))
 
     # a — forecast accuracy (MAE vs horizon): zero-shot TiRex vs every trained baseline (matched test)
     a = axs["a"]
@@ -347,7 +348,7 @@ def figure2(tag):
         b.fill_between(hs, lo, hi, color=col, alpha=0.15, lw=0)
     b.axhline(0, color="#999", lw=0.7, ls="--")
     S.finish(b, "forecast horizon (min)", "CRPS reduction M0→M1 (%)", "TiRex-2: value by window type")
-    b.set_xticks(hs); b.legend(loc="upper left", fontsize=5.6, title="window"); S.panel_letter(b, "b")
+    b.set_xticks(hs); b.legend(loc="upper left", fontsize=5.6); S.panel_letter(b, "c")
 
     # c — which drug covariate, and which model exploits it: grouped forest, points + case-clustered
     # 95% CIs (all models on one linear axis — the effect can be ≤0 for phenylephrine, which log can't
@@ -370,7 +371,7 @@ def figure2(tag):
                        capsize=2, lw=1.1, ms=4)
             seen.add(m["disp"])
     c.axvline(0, color="#999", lw=0.7, ls="--")
-    c.set_yticks([ar[2] for ar in arms]); c.set_yticklabels([ar[0] for ar in arms])
+    c.set_yticks([ar[2] for ar in arms]); c.set_yticklabels([ar[0] for ar in arms], fontsize=5.8)
     c.set_ylim(-0.5, 2.5)
     c.set_xlabel("CRPS reduction, transition @7 min (%)")
     c.set_title("Which covariate, which model?", loc="center")
@@ -378,12 +379,12 @@ def figure2(tag):
     handles = [Line2D([], [], color=S.C["M1"], marker="o", ls="none", label="TiRex-2 (zero-shot)")]
     handles += [Line2D([], [], color=m["col"], marker=m["mk"], ls="none", label=f"{m['disp']} (trained)")
                 for m in MATCHED_BASELINES if m["disp"] in seen]
-    c.legend(handles=handles, loc="lower right", fontsize=5.0); S.panel_letter(c, "c")
+    c.legend(handles=handles, loc="lower right", fontsize=5.0); S.panel_letter(c, "d")
 
     # d — instantaneous MAE vs Kapral (external / internal), TiRex vs trained baselines
     d = axs["d"]
     _kapral_panel(d, tag)
-    S.panel_letter(d, "d")
+    S.panel_letter(d, "b")
 
     # e — covariate value by model (CE, transition @7 min): the same effect as panel c's CE row,
     # as bars for an at-a-glance read, with case-clustered 95% CIs. Univariate zero-shot TSFMs
